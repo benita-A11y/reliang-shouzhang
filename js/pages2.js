@@ -146,8 +146,10 @@ registerAction('hunt:fv', async (el) => {
 });
 registerAction('hunt:ai-item', async (el) => {
   closeSheet();
-  await recordFood({ id: null, name: el.dataset.name, kcal: Number(el.dataset.kcal), price: Number(el.dataset.price), shop: SHOP_MAP[el.dataset.shopid].name, category: '外卖', portion: '一份', macros: null }, defaultMeal());
-  await upsertShopFood(el.dataset.name, Number(el.dataset.kcal), Number(el.dataset.price), SHOP_MAP[el.dataset.shopid].name, el.dataset.shopid);
+  const shop = SHOP_MAP[el.dataset.shopid];
+  await recordFood({ id: null, name: el.dataset.name, kcal: Number(el.dataset.kcal), price: Number(el.dataset.price), shop: shop.name, category: '外卖', portion: '一份', macros: null }, defaultMeal());
+  await upsertShopFood(el.dataset.name, Number(el.dataset.kcal), Number(el.dataset.price), shop.name, el.dataset.shopid);
+  await learnTasteSignal('hunt:ai-item', shopFlavorLabel(shop));
 });
 
 /* ============================================================
@@ -209,6 +211,7 @@ registerAction('shop:fav', async (el) => {
   const shop = SHOP_MAP[el.dataset.id];
   if (!shop) return;
   for (const it of shop.items) await upsertShopFood(it.name, it.kcal, it.price, shop.name, shop.id);
+  await learnTasteSignal('shop:fav', shopFlavorLabel(shop));
   toast(`已收藏「${shop.name}」全部 ${shop.items.length} 款到食谱 ⭐`, 'brand');
 });
 registerAction('shop:item', (el) => {
@@ -221,6 +224,7 @@ registerAction('hunt:item-record', async (el) => {
   closeSheet();
   await recordFood({ id: null, name: el.dataset.name, kcal: Number(el.dataset.kcal), price: Number(el.dataset.price), shop: shop.name, category: shop.cat === '奶茶咖啡' ? '饮品' : '外卖', portion: '一份', macros: null }, defaultMeal());
   await upsertShopFood(el.dataset.name, Number(el.dataset.kcal), Number(el.dataset.price), shop.name, el.dataset.shopid);
+  await learnTasteSignal('hunt:item-record', shopFlavorLabel(shop));
 });
 registerAction('hunt:item-bill', (el) => {
   const shop = SHOP_MAP[el.dataset.shopid];
@@ -230,6 +234,7 @@ registerAction('hunt:item-bill', (el) => {
 registerAction('hunt:item-fav', async (el) => {
   const shop = SHOP_MAP[el.dataset.shopid];
   await upsertShopFood(el.dataset.name, Number(el.dataset.kcal), Number(el.dataset.price), shop.name, el.dataset.shopid);
+  await learnTasteSignal('hunt:item-fav', shopFlavorLabel(shop));
   toast(`已收藏「${el.dataset.name}」⭐`, 'brand');
 });
 
@@ -237,6 +242,17 @@ registerAction('hunt:item-fav', async (el) => {
  * 多巴胺账单（虚拟点单）
  * ============================================================ */
 const BILL = { item: null, shop: null, sweetness: '5分糖', temp: '冰', size: '中杯', toppings: [], portion: '中份', spice: '微辣', isDrink: true };
+
+/* 口味标签统一（店铺 flavor 无「的」→ 秘书偏好标签带「的」） */
+function shopFlavorLabel(shop) {
+  const f = (shop && shop.flavor) || '咸香';
+  return f.endsWith('的') ? f : f + '的';
+}
+/* 规格选择后的口味信号：饮品按甜度推断，食品按店铺口味 */
+function billFlavor() {
+  if (BILL.isDrink) return (BILL.sweetness === '无糖' || BILL.sweetness === '3分糖') ? '清淡的' : '甜口的';
+  return shopFlavorLabel(BILL.shop);
+}
 
 registerPage('bill', async function (root) {
   const st = await getBillStats();
@@ -254,19 +270,14 @@ registerPage('bill', async function (root) {
     <div class="card" style="margin-top:12px;padding:14px 18px">
       <div class="flex" style="gap:10px;flex-wrap:wrap">
         <span class="pill-num">${convertKcal(st.savedKcal)}</span>
-        <span class="pill-num" style="background:var(--orange-soft);color:var(--orange)">已躲过 ${st.count} 单</span>
+        <span class="pill-num" style="background:var(--orange-soft);color:var(--orange)">≈ ${Math.round(st.savedKcal / 500)} 个汉堡</span>
+        <span class="pill-num" style="background:var(--green-soft);color:var(--green)">≈ ${Math.round(st.savedKcal / 400)} 杯奶茶</span>
+        <span class="pill-num">已躲过 ${st.count} 单</span>
       </div>
       <div class="hint" style="margin-top:8px">去「觅食」选个想吃的，先过把瘾，热量和钱都省下啦</div>
     </div>
     <div class="section-title">📋 历史虚拟订单</div>
-    ${st.orders.length ? st.orders.map((o) => `
-      <div class="order-card">
-        <div class="order-emoji">${o.shopEmoji || '🧋'}</div>
-        <div class="order-info"><div class="order-name">${esc(o.itemName)}</div>
-          <div class="order-shop">${esc(o.shopName || '')}${o.specs ? ' · ' + esc(o.specs) : ''}</div>
-          <div class="order-date">${o.date}</div></div>
-        <div class="order-save">-${o.savedKcal}kcal<br>${o.priceSource === 'none' ? '未定价' : '-¥' + o.savedPrice.toFixed(2)}</div>
-      </div>`).join('') : `
+    ${st.orders.length ? renderOrderGroups(st.orders) : `
       <div class="empty-state" style="padding:34px 20px">
         <div class="es-icon">🧾</div>
         <div class="es-title">账单还空着</div>
@@ -277,6 +288,30 @@ registerPage('bill', async function (root) {
   `;
 });
 
+function timeLabel(iso) {
+  try { const d = new Date(iso); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); } catch (e) { return ''; }
+}
+/* 需求 4.3：历史订单按「今天 / 昨天 / M月D日」分组展示 */
+function renderOrderGroups(orders) {
+  const today = todayKey();
+  const yest = addDays(todayKey(), -1);
+  const groups = {};
+  orders.forEach((o) => {
+    const d = (o.date || '').slice(0, 10);
+    const label = d === today ? '今天' : d === yest ? '昨天' : (d.slice(5).replace('-', '/'));
+    (groups[label] = groups[label] || []).push(o);
+  });
+  return Object.keys(groups).map((label) => `
+    <div class="order-group-title">${label}</div>
+    ${groups[label].map((o) => `
+      <div class="order-card">
+        <div class="order-emoji">${o.shopEmoji || '🧋'}</div>
+        <div class="order-info"><div class="order-name">${esc(o.itemName)}</div>
+          <div class="order-shop">${esc(o.shopName || '')}${o.specs ? ' · ' + esc(o.specs) : ''}</div>
+          <div class="order-date">${label} ${timeLabel(o.createdAt)}</div></div>
+        <div class="order-save">-${o.savedKcal}kcal<br>${o.priceSource === 'none' ? '未定价' : '-¥' + o.savedPrice.toFixed(2)}</div>
+      </div>`).join('')}`).join('');
+}
 function openBillFlow(item, shop) {
   const isDrink = shop.cat === '奶茶咖啡' || !!BRANDS.find((b) => b.id === shop.id);
   BILL.item = item; BILL.shop = shop; BILL.isDrink = isDrink;
@@ -362,10 +397,12 @@ registerAction('spec:record', async () => {
     portion: total.specs, macros: estimateMacros(total.kcal)
   }, defaultMeal());
   await upsertShopFood(BILL.item.name, total.kcal, total.price, shop.name, shop.id);
+  await learnTasteSignal('spec:record', billFlavor());
 });
 registerAction('spec:fav', async () => {
   const total = computeBill();
   await upsertShopFood(BILL.item.name, total.kcal, total.price, BILL.shop.name, BILL.shop.id);
+  await learnTasteSignal('spec:fav', billFlavor());
   toast(`已收藏「${BILL.item.name}」(${total.kcal}kcal) ⭐`, 'brand');
 });
 registerAction('spec:choose', (el) => {
@@ -390,6 +427,23 @@ async function getRealPrice(item, shop) {
   return { price: 0, source: 'none' };
 }
 registerAction('spec:confirm', async () => {
+  // 需求 4.1：加入账单前弹出确认卡 → 用户确认虚拟下单
+  const total = computeBill();
+  const real = await getRealPrice(BILL.item, BILL.shop);
+  openModal(`
+    <div class="modal-title">🧾 确认虚拟下单？</div>
+    <div class="confirm-food">${BILL.shop.emoji} ${esc(BILL.item.name)}</div>
+    <div class="confirm-spec">规格：${esc(total.specs)}</div>
+    <div class="confirm-line"><span>总热量</span><b>${total.kcal} kcal</b></div>
+    <div class="confirm-line"><span>总价格</span><b>¥${total.price.toFixed(2)}</b></div>
+    <div class="confirm-line save"><span>将节省</span><b>${real.price > 0 ? '-¥' + real.price.toFixed(2) : '未定价'} · -${total.kcal}kcal</b></div>
+    <div class="flex" style="gap:10px;margin-top:18px">
+      <button class="btn ghost" data-action="modal:close">再想想</button>
+      <button class="btn primary" data-action="bill:do">✅ 确认下单</button>
+    </div>`);
+});
+registerAction('bill:do', async () => {
+  closeModal();
   const total = computeBill();
   const real = await getRealPrice(BILL.item, BILL.shop);
   const order = {
@@ -399,6 +453,7 @@ registerAction('spec:confirm', async () => {
   };
   await addOrder(order);
   await upsertShopFood(BILL.item.name, total.kcal, total.price, BILL.shop.name, BILL.shop.id);
+  await learnTasteSignal('spec:confirm', billFlavor());
   confetti();
   renderBillResult(order);
 });
@@ -407,9 +462,12 @@ function renderBillResult(order) {
   replaceSheet(`
     <div style="text-align:center;padding-top:16px">
       <div class="result-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
-      <div class="result-big">- ${order.savedKcal} kcal</div>
-      <div class="result-big sub">${order.priceSource === 'none' ? '¥0.00（未定价）' : '- ¥' + order.savedPrice.toFixed(2)}</div>
-      <div class="result-note">${esc(order.shopName)} · ${esc(order.itemName)}<br>相当于慢跑 ${hours} 小时才能消耗掉哦，你成功躲过一劫！</div>
+      <div class="result-title">🎉 虚拟下单成功！</div>
+      <div class="result-food">${order.shopEmoji || '🍔'} ${esc(order.itemName)}</div>
+      <div class="result-spec">规格：${esc(order.specs || '默认规格')}</div>
+      <div class="result-line">✅ 避免摄入热量 <b>- ${order.savedKcal} kcal</b></div>
+      <div class="result-line">✅ 节省金额 <b>${order.priceSource === 'none' ? '¥0.00（未定价）' : '- ¥' + order.savedPrice.toFixed(2)}</b></div>
+      <div class="result-note">💡 相当于慢跑 <b>${hours}</b> 小时才能消耗掉这杯奶茶的热量哦！<br>你成功躲过一劫！</div>
       <div class="flex" style="justify-content:center;gap:10px">
         <button class="btn ghost" data-action="bill:again">再来一单</button>
         <button class="btn primary" data-action="bill:view">查看我的账单</button>
