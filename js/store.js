@@ -145,6 +145,7 @@ const DEFAULT_PROFILE = {
   notifyOn: false,
   tastePrefs: { flavor: [], ingredient: [] },  // 口味偏好学习
   tasteCount: 0,
+  preferences: [],  // 偏好学习历史：[{user_id, timestamp, taste[], food_type[], meal_type}]
   contributionCount: 0,
   badges: [],
   recordTotal: 0
