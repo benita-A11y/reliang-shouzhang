@@ -186,6 +186,9 @@ registerPage('profile', async function (root) {
       <div class="list-item" data-action="prof:contribs"><div class="li-icon" style="background:var(--orange-soft)">📮</div>
         <div class="li-main"><div class="li-title">我的贡献 <span class="cat-tag" style="background:var(--orange-soft);color:var(--orange)">${PROFILE.contributionCount}次</span></div>
           <div class="li-sub">提交新品及审核状态</div></div><div class="li-arrow">›</div></div>
+      <div class="list-item" data-action="prof:ai"><div class="li-icon" style="background:var(--brand-soft)">🤖</div>
+        <div class="li-main"><div class="li-title">AI 识别设置 <span class="cat-tag" style="background:${LLM.isConfigured() ? 'var(--green-soft)' : 'var(--orange-soft)'};color:${LLM.isConfigured() ? 'var(--green)' : 'var(--orange)'}">${LLM.isConfigured() ? '已连接' : '演示模式'}</span></div>
+          <div class="li-sub">相册汇总图批量拆解：填入密钥即可真实识别</div></div><div class="li-arrow">›</div></div>
       <div class="list-item" data-action="nav:go" data-page="board"><div class="li-icon" style="background:var(--brand-soft)">🗓️</div>
         <div class="li-main"><div class="li-title">我的日历</div><div class="li-sub">跳转到数据看板的日历视图</div></div><div class="li-arrow">›</div></div>
       <div class="list-item" data-action="day:indulge"><div class="li-icon" style="background:var(--pink-soft)">🎉</div>
@@ -306,6 +309,75 @@ registerAction('prof:emoji', async (el) => {
   await saveProfile(PROFILE);
   toast(`放纵日标记改为 ${el.dataset.v}`, 'brand');
   rerender();
+});
+/* ---------- AI 识别设置（批量拆解录入的密钥配置） ---------- */
+const AI_PROVIDERS = {
+  openai: ['https://api.openai.com/v1', 'gpt-4o-mini'],
+  doubao: ['https://ark.cn-beijing.volces.com/api/v3', 'doubao-1.5-vision-pro-32k-250115'],
+  custom: ['', '']
+};
+let _aiCfg = {};
+
+registerAction('prof:ai', () => {
+  _aiCfg = Object.assign({}, getAISettings());
+  openSheet(`
+    <div class="sheet-title">🤖 AI 识别设置</div>
+    <div class="muted small" style="text-align:center;margin-bottom:14px">用于「记录 → 从相册选择」批量拆解，支持 OpenAI 兼容视觉模型</div>
+    <div class="field"><label>接口类型</label>
+      <div class="chips" id="ai-provider">
+        ${Object.keys(AI_PROVIDERS).map((k) => `<button class="chip ${(_aiCfg.provider || 'openai') === k ? 'on' : ''}" data-action="ai:provider" data-v="${k}">${k === 'openai' ? 'OpenAI' : k === 'doubao' ? '豆包' : '自定义'}</button>`).join('')}
+      </div></div>
+    <div class="field"><label>接口地址 Base URL</label><input id="ai-base" type="text" value="${esc(_aiCfg.baseUrl)}" placeholder="https://api.openai.com/v1"></div>
+    <div class="field"><label>API Key</label><input id="ai-key" type="password" value="${esc(_aiCfg.apiKey)}" placeholder="sk-…" autocomplete="off"></div>
+    <div class="field"><label>模型（需支持图片输入）</label><input id="ai-model" type="text" value="${esc(_aiCfg.model)}" placeholder="gpt-4o-mini"></div>
+    <div class="flex" style="gap:10px">
+      <button class="btn ghost" style="flex:1" data-action="ai:test">🔌 测试连接</button>
+      <button class="btn primary" style="flex:2" data-action="ai:save">保存</button>
+    </div>
+    <div class="hint" style="text-align:center;margin-top:12px">密钥只保存在本机浏览器，不上传任何服务器</div>`);
+});
+
+registerAction('ai:provider', (el) => {
+  _aiCfg.provider = el.dataset.v;
+  const preset = AI_PROVIDERS[_aiCfg.provider];
+  if (preset) {
+    if (preset[0]) $('#ai-base').value = preset[0];
+    if (preset[1]) $('#ai-model').value = preset[1];
+  }
+  document.querySelectorAll('#ai-provider .chip').forEach((c) => c.classList.toggle('on', c === el));
+});
+
+registerAction('ai:save', async () => {
+  const cfg = {
+    provider: _aiCfg.provider || 'openai',
+    baseUrl: $('#ai-base').value.trim() || 'https://api.openai.com/v1',
+    apiKey: $('#ai-key').value.trim(),
+    model: $('#ai-model').value.trim() || 'gpt-4o-mini'
+  };
+  await saveAISettings(cfg);
+  closeSheet();
+  toast(cfg.apiKey ? 'AI 设置已保存 ✓ 下次拆解将真实识别' : '已保存（未填密钥，将使用演示模式）', 'brand');
+  rerender();
+});
+
+registerAction('ai:test', async (el) => {
+  const cfg = {
+    provider: _aiCfg.provider || 'openai',
+    baseUrl: $('#ai-base').value.trim() || 'https://api.openai.com/v1',
+    apiKey: $('#ai-key').value.trim(),
+    model: $('#ai-model').value.trim() || 'gpt-4o-mini'
+  };
+  if (!cfg.apiKey) { toast('请先填入 API Key', 'red'); return; }
+  const old = el.textContent;
+  el.textContent = '测试中…'; el.disabled = true;
+  try {
+    const r = await LLM.test(cfg);
+    toast(r.ok ? `✓ 连接成功（${r.model}）` : '✗ ' + r.msg, r.ok ? 'green' : 'red');
+  } catch (e) {
+    toast('✗ ' + e.message, 'red');
+  } finally {
+    el.textContent = old; el.disabled = false;
+  }
 });
 registerAction('prof:export', () => {
   openSheet(`
