@@ -55,6 +55,10 @@ async function renderWeekSummary() {
   const ex = await getExercises();
   let exKcal = 0, exCount = 0;
   ex.forEach((e) => { if (daysSet.has(e.date)) { exKcal += e.kcal || 0; exCount++; } });
+  // 需求 2.2 ⑧：多巴胺账单回流 → 本周虚拟节省
+  const orders = await getOrders();
+  let weekSave = 0;
+  orders.forEach((o) => { if (daysSet.has((o.date || '').slice(0, 10))) weekSave += o.savedKcal || 0; });
   const avg = recorded ? Math.round(total / recorded) : 0;
   const weights = await getWeights();
   let weightText = '';
@@ -76,6 +80,7 @@ async function renderWeekSummary() {
         <div class="ws-item"><b>${avg}</b><span>日均摄入</span></div>
         <div class="ws-item"><b>${qualified}</b><span>达标天数</span></div>
         <div class="ws-item"><b>${exKcal}</b><span>运动消耗</span></div>
+        <div class="ws-item"><b>${weekSave.toLocaleString()}</b><span>虚拟节省</span></div>
       </div>
       <div class="ws-sub">💧 ${waterCups} 杯水 · ${exCount ? `🏃 ${exCount} 次运动` : '本周暂无运动'}${weightText ? ' · ⚖️ ' + weightText : ''}</div>
     </div>`;
