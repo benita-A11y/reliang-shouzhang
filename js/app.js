@@ -43,8 +43,11 @@ const foodEmoji = (f) => (CAT_EMOJI[f.category] || '🍽️');
 const dk = (kcal) => displayKcal(kcal, PROFILE ? PROFILE.recordTotal : 0);
 const dkr = (kcal) => displayKcalRange(kcal, PROFILE ? PROFILE.recordTotal : 0);
 function photoHTML(f, big) {
-  if (f && f.photo) return `<img src="${f.photo}" alt="">`;
-  return `<span style="${big ? 'font-size:28px' : ''}">${foodEmoji(f)}</span>`;
+  // 兼容食物对象(f.photo)与记录对象(records 存 foodPhoto)两种来源
+  const src = (f && (f.photo || f.foodPhoto)) || '';
+  if (!src) return `<span style="${big ? 'font-size:28px' : ''}">${foodEmoji(f)}</span>`;
+  // 图片加载失败时自动移除，露出下方 emoji 占位图
+  return `<span class="ph-wrap">${foodEmoji(f)}<img src="${src}" alt="" onerror="this.remove()"></span>`;
 }
 const defaultMeal = () => {
   const h = new Date().getHours();
@@ -216,30 +219,52 @@ function showAlbumPermGuide() {
     </div>`);
 }
 
-/** 从系统相册选图（可多选）。cb(dataURLs[], files[]) */
-async function pickAlbumImages(cb, { capture = false, maxCount = 9 } = {}) {
-  const input = capture ? $('#camera-input') : $('#album-input');
-  input.value = '';
-  input.onchange = async () => {
-    input.oncancel = null;
-    const files = Array.from(input.files || []).slice(0, maxCount);
-    if (!files.length) return;
-    if (input.files.length > maxCount) toast(`最多选择 ${maxCount} 张，已保留前 ${maxCount} 张`, 'brand');
+/**
+ * 从系统相册选图（可多选，最多 maxCount 张）。cb(dataURLs[], files[])
+ * 每次动态创建 file input 并立即触发点击：避免复用静态 hidden input
+ * 在 PWA/移动端「点击没反应」的问题（这是用户反馈的根因）。
+ */
+function pickAlbumImages(cb, { capture = false, maxCount = 9, compress = 640 } = {}) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.multiple = !capture; // 相册支持多选；拍照单张
+  if (capture) input.setAttribute('capture', 'environment');
+  Object.assign(input.style, { position: 'fixed', left: '-9999px', top: 0, width: '1px', height: '1px', opacity: 0 });
+  document.body.appendChild(input);
+  let done = false;
+  const cleanup = () => input.remove();
+  const onChange = async () => {
+    if (done) return;
+    done = true;
+    cleanup();
+    const picked = Array.from(input.files || []);
+    if (!picked.length) return; // 未选图：静默返回（不打扰）
+    if (picked.length > maxCount) toast(`最多选择 ${maxCount} 张，已保留前 ${maxCount} 张`, 'brand');
+    const files = picked.slice(0, maxCount);
     const out = [];
     for (const f of files) {
-      const raw = await fileToDataURL(f);
-      out.push(await compressImage(raw));
+      try {
+        const raw = await fileToDataURL(f);
+        out.push(await compressImage(raw, compress));
+      } catch (e) { /* 单张读取失败则跳过 */ }
     }
-    cb(out, files);
+    if (out.length) cb(out, files);
   };
-  input.oncancel = () => {
-    // 用户取消选图（可能因权限受限）：首次给一次「去设置」引导
+  const onCancel = () => {
+    if (done) return;
+    done = true;
+    cleanup();
+    // 取消选图（常见于系统权限受限）：首次给一次「去设置」引导
     if (!ALBUM_PERM.hinted) {
       ALBUM_PERM.hinted = true;
       setTimeout(showAlbumPermGuide, 450);
     }
   };
-  input.click();
+  // change 为标准选图事件；cancel 为关闭/权限拒绝事件（Chrome 113+ / Safari 16.4+）
+  input.addEventListener('change', onChange, { once: true });
+  input.addEventListener('cancel', onCancel, { once: true });
+  try { input.click(); } catch (e) { cleanup(); }
 }
 
 /** 单张选图（兼容旧调用方） */
