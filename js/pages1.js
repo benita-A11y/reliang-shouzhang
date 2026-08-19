@@ -147,10 +147,10 @@ registerPage('record', function (root) {
         </div>
       </div>
       <div class="flex" style="gap:10px;justify-content:center">
-        <button class="btn primary" data-action="rec:camera">📸 拍照识别</button>
-        <button class="btn" data-action="rec:album">🖼️ 相册选图</button>
+        <button class="btn primary" data-action="rec:camera">📷 拍照识别</button>
+        <button class="btn" data-action="rec:album">🖼️ 从相册选择</button>
       </div>
-      <div class="hint" style="text-align:center;margin-top:10px">识别在本地完成，不联网也能用 · 前期也可直接手动录入</div>
+      <div class="hint" style="text-align:center;margin-top:10px">📷 拍单张识别 · 🖼️ 选汇总图可一键批量拆解入库 · 不联网也能用</div>
     </div>
     <div class="card">
       <div class="search">
@@ -211,7 +211,254 @@ function recPhotoStart(capture) {
   }, capture);
 }
 registerAction('rec:camera', () => recPhotoStart(true));
-registerAction('rec:album', () => recPhotoStart(false));
+registerAction('rec:album', () => startBatchBreakdown());
+
+/* ============================================================
+ * 批量拆解录入：相册汇总图 → AI 拆解 → 预览勾选 → 一键导入食谱库
+ * ============================================================ */
+const ALL_CATS = ['食堂', '外卖', '自制', '饮品', '零食', '水果'];
+const BATCH = { photo: '', items: [], src: '图片导入' };
+const _sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* 第一步：选图 → 进度面板 → 识别 */
+async function startBatchBreakdown() {
+  pickPhoto(async (dataURL) => {
+    BATCH.photo = dataURL; BATCH.items = [];
+    replaceSheet(renderBatchProgress());
+    const steps = ['batch-step-0', 'batch-step-1', 'batch-step-2'];
+    for (let i = 0; i < steps.length; i++) {
+      await _sleep(420);
+      const el = document.getElementById(steps[i]);
+      if (el) el.classList.add('done');
+    }
+    try {
+      const items = await LLM.recognizeFoodsFromImage(dataURL, BATCH.src);
+      for (const it of items) {
+        if (it.box) it.thumb = await cropBox(dataURL, it.box); // 有坐标则裁剪小图
+      }
+      const done = document.getElementById('batch-step-3');
+      if (done) done.classList.add('done');
+      await _sleep(320);
+      BATCH.items = items;
+      if (!items.length) { renderBatchEmpty(); return; }
+      renderBatchPreview();
+    } catch (e) {
+      if (/没有识别出任何食物/.test(e.message)) renderBatchEmpty();
+      else renderBatchError(e.message);
+    }
+  }, false);
+}
+
+function renderBatchProgress() {
+  const steps = [
+    ['🔍', '正在识别图片中的食物区域…'],
+    ['🧾', '正在提取食物名称和热量…'],
+    ['📦', '正在整理数据…'],
+    ['✅', '拆解完成！']
+  ];
+  return `
+    <div class="sheet-title">🔍 AI 正在拆解这张图中的食物…</div>
+    <div style="text-align:center;padding:4px 0 14px">
+      <img src="${BATCH.photo}" style="width:110px;height:110px;border-radius:20px;object-fit:cover;margin:0 auto;filter:blur(0.6px)">
+    </div>
+    <div class="batch-steps">
+      ${steps.map(([e, t], i) => `
+        <div class="batch-step" id="batch-step-${i}">
+          <div class="bs-dot">${e}</div>
+          <div class="bs-text">${t}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+/* 第三步：拆解结果预览（可勾选 / 可编辑 / 可删除） */
+function renderBatchPreview() {
+  const items = BATCH.items;
+  const checked = items.filter((x) => x.checked).length;
+  const demoNote = LLM.isConfigured() ? '' : `
+    <div class="reason-box" style="border-left-color:var(--orange);margin-bottom:12px">
+      ⚠️ 未连接 AI，当前为<b>演示数据</b>（取自你的食谱库）。到「我的 → AI 识别设置」填入密钥后即可真实拆解图片。
+    </div>`;
+  replaceSheet(`
+    <button class="sheet-close" data-action="sheet:close">✕</button>
+    <div class="sheet-title">🧩 拆解结果</div>
+    <div class="muted small" style="text-align:center;margin:-6px 0 12px">共识别到 ${items.length} 个食物 · 已选 <b id="batch-count">${checked}</b> 个</div>
+    ${demoNote}
+    <div id="batch-list">${items.map((it, idx) => renderBatchItem(it, idx)).join('')}</div>
+    <div id="batch-foot">${renderBatchFooter()}</div>`);
+}
+
+function renderBatchItem(it, idx) {
+  const confTxt = it.confidence > 90 ? '高置信度' : it.confidence >= 60 ? '建议核对' : '请手动修正';
+  const confCls = it.confidence > 90 ? 'green' : it.confidence >= 60 ? 'yellow' : 'red';
+  const img = it.thumb || it.photo || BATCH.photo;
+  return `
+    <div class="batch-item">
+      <div class="batch-check ${it.checked ? '' : 'off'}" data-action="batch:toggle" data-i="${idx}">✓</div>
+      <div class="bi-photo" data-action="batch:zoom" data-i="${idx}"><img src="${img}"></div>
+      <div class="bi-info">
+        <div class="bi-name"><span>${esc(it.name)}</span><span class="bconf ${confCls}" title="${confTxt}"></span></div>
+        <div class="bi-meta">${it.kcal} 大卡 ${esc(it.unit)} · ${confTxt}${it.edited ? ' · ✏️已改' : ''}</div>
+      </div>
+      <div class="bi-edit" data-action="batch:edit" data-i="${idx}">✏️</div>
+    </div>`;
+}
+
+function renderBatchFooter() {
+  const items = BATCH.items;
+  const checked = items.filter((x) => x.checked).length;
+  const allOn = checked === items.length;
+  return `
+    <div class="flex" style="gap:8px;margin-bottom:10px">
+      <button class="btn sm ghost" style="flex:1" data-action="batch:all">${allOn ? '☐ 全不选' : '☑ 全选'}</button>
+      <button class="btn sm ghost" style="flex:1" data-action="batch:remove">🗑 删除选中 (${checked})</button>
+    </div>
+    <button class="btn primary lg block" data-action="batch:import" ${checked ? '' : 'disabled'}>📥 一键全部导入 (${checked})</button>`;
+}
+
+registerAction('batch:toggle', (el) => {
+  const it = BATCH.items[Number(el.dataset.i)];
+  if (!it) return;
+  it.checked = !it.checked;
+  el.classList.toggle('off', !it.checked);
+  const foot = document.getElementById('batch-foot');
+  if (foot) foot.innerHTML = renderBatchFooter();
+  const c = document.getElementById('batch-count');
+  if (c) c.textContent = BATCH.items.filter((x) => x.checked).length;
+});
+
+registerAction('batch:all', () => {
+  const allOn = BATCH.items.every((x) => x.checked);
+  BATCH.items.forEach((x) => { x.checked = !allOn; });
+  renderBatchPreview();
+});
+
+registerAction('batch:remove', () => {
+  BATCH.items = BATCH.items.filter((x) => !x.checked);
+  if (!BATCH.items.length) { renderBatchEmpty(); return; }
+  renderBatchPreview();
+});
+
+registerAction('batch:zoom', (el) => {
+  const it = BATCH.items[Number(el.dataset.i)];
+  if (!it) return;
+  openModal(`
+    <div class="modal-title">${esc(it.name)}</div>
+    <img src="${it.thumb || it.photo || BATCH.photo}" style="width:100%;border-radius:16px;margin-bottom:14px">
+    <div class="modal-sub">${it.kcal} 大卡 ${esc(it.unit)} · ${it.confidence > 90 ? '高置信度' : it.confidence >= 60 ? '建议核对' : '请手动修正'}</div>
+    <button class="btn primary block" data-action="modal:close">知道了</button>`);
+});
+
+/* 第四步：确认导入 → 存入食谱库 → 跳转 */
+registerAction('batch:import', () => {
+  const items = BATCH.items.filter((x) => x.checked);
+  if (!items.length) return;
+  openModal(`
+    <div class="modal-title">确认将 ${items.length} 个食物导入「我的食谱」？</div>
+    <div class="modal-sub">这将一次性新增 ${items.length} 样食物，导入后可随时编辑修改。</div>
+    <div class="flex" style="justify-content:flex-end;gap:10px;margin-top:18px">
+      <button class="btn ghost" data-action="modal:close">取消</button>
+      <button class="btn primary" data-action="batch:import-go">确认导入</button>
+    </div>`);
+});
+
+registerAction('batch:import-go', async () => {
+  const items = BATCH.items.filter((x) => x.checked);
+  if (!items.length) return;
+  const now = nowISO();
+  for (const it of items) {
+    await saveFood({
+      id: uid(), name: it.name, kcal: it.kcal, price: 0, shop: '',
+      portion: it.unit || '一份', category: it.category || '零食',
+      photo: it.thumb || it.photo || '', source: it.source || '用户导入',
+      createdAt: now, updatedAt: now, editCount: 0,
+      macros: estimateMacros(it.kcal)
+    });
+  }
+  await loadFoods();
+  closeModal(); closeSheet();
+  toast(`🎉 已成功导入 ${items.length} 样食物到你的食谱库！`, 'brand');
+  switchPage('recipes');
+});
+
+/* 单条编辑：名称 / 热量 / 单位 / 分类 / 换图 */
+let _beIdx = null, _bePhoto = '', _beCat = '零食';
+
+registerAction('batch:edit', (el) => openBatchEdit(Number(el.dataset.i)));
+
+function openBatchEdit(idx) {
+  const it = BATCH.items[idx];
+  if (!it) return;
+  _beIdx = idx; _bePhoto = it.thumb || it.photo || ''; _beCat = it.category || '零食';
+  openSheet(`
+    <div class="sheet-title">✏️ 编辑「${esc(it.name)}」</div>
+    <div class="field">
+      <label>照片</label>
+      <div class="photo-pick" data-action="batch:photo">
+        ${_bePhoto ? `<img src="${_bePhoto}"><div class="pp-x" data-action="batch:photo-clear">✕</div>` : '<span>＋</span><span>拍照 / 相册</span>'}
+      </div>
+    </div>
+    <div class="field"><label>食物名称 <span class="req">*</span></label><input id="be-name" type="text" value="${esc(it.name)}"></div>
+    <div class="field"><label>热量（大卡）<span class="req">*</span></label><input id="be-kcal" type="number" value="${it.kcal}"></div>
+    <div class="field"><label>单位（选填）</label><input id="be-unit" type="text" placeholder="如：/包 /块 /100g" value="${esc(it.unit)}"></div>
+    <div class="field"><label>分类</label>
+      <div class="chips" id="be-cat">${ALL_CATS.map((c) => `<button class="chip ${_beCat === c ? 'on' : ''}" data-action="batch:cat" data-v="${c}">${c}</button>`).join('')}</div>
+    </div>
+    <div style="height:6px"></div>
+    <button class="btn primary lg block" data-action="batch:edit-save">💾 保存</button>`);
+}
+
+registerAction('batch:cat', (el) => {
+  _beCat = el.dataset.v;
+  document.querySelectorAll('#be-cat .chip').forEach((c) => c.classList.toggle('on', c === el));
+});
+
+registerAction('batch:photo', () => pickPhoto((d) => { _bePhoto = d; openBatchEdit(_beIdx); }, false));
+
+registerAction('batch:photo-clear', (el) => {
+  el.stopPropagation();
+  _bePhoto = '';
+  openBatchEdit(_beIdx);
+});
+
+registerAction('batch:edit-save', () => {
+  const it = BATCH.items[_beIdx];
+  if (!it) return;
+  const name = document.getElementById('be-name').value.trim();
+  const kcal = Number(document.getElementById('be-kcal').value);
+  if (!name || !(kcal > 0)) { toast('名称和热量必填哦', 'red'); return; }
+  it.name = name; it.kcal = Math.round(kcal);
+  it.unit = document.getElementById('be-unit').value.trim() || '/份';
+  it.category = _beCat || '零食';
+  if (_bePhoto) it.thumb = _bePhoto;
+  it.edited = true;
+  renderBatchPreview(); // 直接刷新预览（closeSheet 有 320ms 延迟清空，不能先关再开）
+});
+
+/* 识别失败 / 空结果的兜底 */
+function renderBatchEmpty() {
+  replaceSheet(`
+    <button class="sheet-close" data-action="sheet:close">✕</button>
+    <div class="sheet-title">未能识别到食物</div>
+    <div class="empty-state" style="margin:10px 0">
+      <div class="es-icon">🤔</div>
+      <div class="es-sub">没能从这张图中认出食物。换一张更清晰的图，或手动录入吧。</div>
+    </div>
+    <button class="btn primary block" data-action="batch:retry">🖼️ 换一张图</button>
+    <div style="height:8px"></div>
+    <button class="btn block" data-action="rec:manual">＋ 手动录入</button>`);
+}
+
+function renderBatchError(msg) {
+  replaceSheet(`
+    <button class="sheet-close" data-action="sheet:close">✕</button>
+    <div class="sheet-title">识别失败了</div>
+    <div class="reason-box" style="border-left-color:var(--red);margin:10px 0 14px">${esc(msg)}</div>
+    <button class="btn primary block" data-action="batch:retry">🔄 重试</button>
+    <div style="height:8px"></div>
+    <button class="btn block" data-action="rec:manual">＋ 手动录入</button>`);
+}
+
+registerAction('batch:retry', () => startBatchBreakdown());
 registerAction('rec:candidate', (el) => {
   const f = REC.candidates[Number(el.dataset.i)];
   if (f) { REC.picked = f; renderRecResult(f); }
@@ -271,7 +518,7 @@ function openManualForm(existing, compare) {
     <div class="field">
       <label>分类</label>
       <div class="chips" id="f-cat">
-        ${['食堂', '外卖', '自制', '饮品'].map((c) => `<button class="chip ${(f.category || '食堂') === c ? 'on' : ''}" data-action="form:cat" data-v="${c}">${c}</button>`).join('')}
+        ${ALL_CATS.map((c) => `<button class="chip ${(f.category || '食堂') === c ? 'on' : ''}" data-action="form:cat" data-v="${c}">${c}</button>`).join('')}
       </div>
     </div>
     ${compare ? `<div class="card" style="box-shadow:none;background:var(--brand-soft);padding:14px;margin-bottom:6px">
@@ -397,7 +644,7 @@ registerPage('recipes', async function (root) {
       <input id="recipes-search" placeholder="搜索食物…" value="${esc(q)}" autocomplete="off">
     </div>
     <div class="chips" id="recipes-chips" style="margin-bottom:10px">
-      ${['全部', '外卖', '食堂', '自制', '饮品'].map((c) => `<button class="chip ${filter === c ? 'on' : ''}" data-action="recipes:cat" data-v="${c}">${c}</button>`).join('')}
+      ${['全部', '食堂', '外卖', '自制', '饮品', '零食', '水果'].map((c) => `<button class="chip ${filter === c ? 'on' : ''}" data-action="recipes:cat" data-v="${c}">${c}</button>`).join('')}
     </div>
     <div class="chips" id="recipes-sort" style="margin-bottom:16px;opacity:.85">
       ${[['recent', '⏱️ 最近食用'], ['kcal-asc', '热量低→高'], ['kcal-desc', '热量高→低'], ['name', '🔤 名称']].map(([v, t]) => `<button class="chip sm ${sort === v ? 'on' : ''}" data-action="recipes:sort" data-v="${v}">${t}</button>`).join('')}
@@ -406,9 +653,10 @@ registerPage('recipes', async function (root) {
       ${list.map((f) => {
         const cal = PLATFORM_CALIBRATIONS[f.name];
         const hasNew = cal && f.kcal !== cal.kcal && !f.calAdopted;
+        const isNewToday = (f.createdAt || '').slice(0, 10) === todayKey();
         return `
         <div class="food-card" data-action="food:detail" data-id="${f.id}">
-          ${hasNew ? '<div class="badge-new">📢 有更新</div>' : ''}
+          ${hasNew ? '<div class="badge-new">📢 有更新</div>' : isNewToday ? '<div class="badge-new" style="background:var(--green-soft);color:var(--green)">新</div>' : ''}
           <div class="fc-edit" data-action="food:edit" data-id="${f.id}">···</div>
           <div class="fc-photo">${photoHTML(f, true)}</div>
           <div class="fc-body">
