@@ -1,5 +1,5 @@
 /* 热量手账 Service Worker：离线优先，网络优先更新 */
-const CACHE = 'reliang-v4';
+const CACHE = 'reliang-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const ASSETS = [
   './js/store.js',
   './js/data.js',
   './js/ai.js',
+  './js/llm.js',
   './js/app.js',
   './js/pages1.js',
   './js/pages2.js',
