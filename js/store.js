@@ -172,6 +172,23 @@ async function saveProfile(p) {
   return p;
 }
 
+/* ---------- 偏好学习：点单/记录/收藏等任何"真实选择"都留下口味信号 ---------- */
+async function learnTasteSignal(source, flavor, ingredient) {
+  const p = (typeof PROFILE !== 'undefined' && PROFILE) ? PROFILE : await loadProfile();
+  const taste = flavor ? [flavor] : [];
+  const food_type = ingredient ? [ingredient] : [];
+  if (!taste.length && !food_type.length) return p;
+  p.preferences = p.preferences || [];
+  p.preferences.push({ user_id: p.id || 'main', timestamp: nowISO(), source: source || 'user', taste, food_type, meal_type: '' });
+  if (p.preferences.length > 60) p.preferences = p.preferences.slice(-60);
+  p.tastePrefs = p.tastePrefs || { flavor: [], ingredient: [] };
+  p.tastePrefs.flavor = Array.from(new Set([...(p.tastePrefs.flavor || []), ...taste])).slice(-10);
+  p.tastePrefs.ingredient = Array.from(new Set([...(p.tastePrefs.ingredient || []), ...food_type])).slice(-10);
+  p.tasteCount = (p.tasteCount || 0) + 1;
+  await saveProfile(p);
+  return p;
+}
+
 /* ---------- 种子数据 ---------- */
 const SEED_FOODS = [
   { name: '食堂炒饭', kcal: 620, price: 12, shop: '学校食堂', portion: '一份', category: '食堂', photo: '', macros: { protein: 16, carbs: 92, fat: 20 } },
