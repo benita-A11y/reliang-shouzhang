@@ -177,18 +177,103 @@ function bindLongPress(el, cb) {
   el.addEventListener('pointerleave', clear);
 }
 
-/* ---------- 拍照/选图 ---------- */
-function pickPhoto(cb, capture = false) {
+/* ---------- 拍照/选图 ----------
+ * Web/PWA 相册权限说明：
+ * 本应用为纯前端网页应用，无法直接调用 iOS PHPhotoLibrary / 安卓 READ_MEDIA_IMAGES
+ * 原生 API。改用 <input type="file" accept="image/*"> 唤起「系统原生相册选择器」，
+ * 系统会自动完成相册权限申请（首次弹系统授权框 / 已授权直接打开 / 拒绝则打开失败）。
+ * 若用户取消或打开失败，通过 showAlbumPermGuide() 引导前往系统设置开启权限。
+ */
+const ALBUM_PERM = { hinted: false };
+
+function albumPermInfo() {
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/.test(ua);
+  const and = /Android/.test(ua);
+  const standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+  const app = standalone ? '本应用' : ios ? 'Safari' : and ? '浏览器' : '浏览器';
+  const src = ios ? '设置 → 隐私 → 照片' : and ? '设置 → 应用管理 → 权限' : '';
+  return { ios, and, app, src };
+}
+
+function showAlbumPermGuide() {
+  const { ios, and, app } = albumPermInfo();
+  openModal(`
+    <div class="modal-title">🖼️ 无法访问相册？</div>
+    <div class="modal-sub" style="line-height:1.9">
+      <div>选图由系统相册负责。若无法打开相册，请按以下步骤开启权限：</div>
+      ${ios ? `
+      <div style="margin-top:10px"><b>①</b> 打开系统「设置 → 隐私 → 照片」</div>
+      <div><b>②</b> 找到「${app}」，权限改为「<b>所有照片</b>」</div>
+      <div><b>③</b> 返回本页重新选择</div>` : and ? `
+      <div style="margin-top:10px"><b>①</b> 打开系统「设置 → 应用管理」</div>
+      <div><b>②</b> 找到你的浏览器，进入「<b>权限</b>」</div>
+      <div><b>③</b> 允许「<b>照片 / 存储</b>」后返回重试</div>` : `
+      <div style="margin-top:10px">请确认浏览器允许访问本地文件（桌面浏览器一般无需额外设置）。</div>`}
+    </div>
+    <div class="flex" style="justify-content:flex-end;gap:10px;margin-top:16px">
+      <button class="btn ghost" data-action="modal:close">知道了</button>
+    </div>`);
+}
+
+/** 从系统相册选图（可多选）。cb(dataURLs[], files[]) */
+async function pickAlbumImages(cb, { capture = false, maxCount = 9 } = {}) {
   const input = capture ? $('#camera-input') : $('#album-input');
   input.value = '';
   input.onchange = async () => {
-    const file = input.files && input.files[0];
-    if (!file) return;
-    const raw = await fileToDataURL(file);
-    const compressed = await compressImage(raw);
-    cb(compressed);
+    input.oncancel = null;
+    const files = Array.from(input.files || []).slice(0, maxCount);
+    if (!files.length) return;
+    if (input.files.length > maxCount) toast(`最多选择 ${maxCount} 张，已保留前 ${maxCount} 张`, 'brand');
+    const out = [];
+    for (const f of files) {
+      const raw = await fileToDataURL(f);
+      out.push(await compressImage(raw));
+    }
+    cb(out, files);
+  };
+  input.oncancel = () => {
+    // 用户取消选图（可能因权限受限）：首次给一次「去设置」引导
+    if (!ALBUM_PERM.hinted) {
+      ALBUM_PERM.hinted = true;
+      setTimeout(showAlbumPermGuide, 450);
+    }
   };
   input.click();
+}
+
+/** 单张选图（兼容旧调用方） */
+function pickPhoto(cb, capture = false) {
+  pickAlbumImages((arr) => { if (arr[0]) cb(arr[0]); }, { capture, maxCount: 1 });
+}
+
+/** 读取图片原始尺寸，用于长图（宽高比 > 2）检测 */
+function imageSize(dataURL) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth || img.width, h: img.naturalHeight || img.height });
+    img.onerror = () => resolve({ w: 0, h: 0 });
+    img.src = dataURL;
+  });
+}
+
+/** 长图压缩：限制宽度，保留高度（普通压缩会按高压缩导致宽太小看不清） */
+function compressToWidth(dataURL, maxW = 900, quality = 0.8) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const r = img.width > maxW ? maxW / img.width : 1;
+        const c = document.createElement('canvas');
+        c.width = Math.max(4, Math.round(img.width * r));
+        c.height = Math.max(4, Math.round(img.height * r));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', quality));
+      } catch { resolve(dataURL); }
+    };
+    img.onerror = () => resolve(dataURL);
+    img.src = dataURL;
+  });
 }
 
 /* ============================================================
