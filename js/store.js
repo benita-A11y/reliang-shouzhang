@@ -6,7 +6,7 @@
 'use strict';
 
 const DB_NAME = 'reliang-shouzhang';
-const DB_VER = 1;
+const DB_VER = 2;   // v2: 新增 exercises（运动）、weights（体重）表
 
 const IDB = {
   foods: 'foods',
@@ -14,7 +14,9 @@ const IDB = {
   orders: 'orders',
   days: 'days',
   profile: 'profile',
-  contribs: 'contribs'
+  contribs: 'contribs',
+  exercises: 'exercises',
+  weights: 'weights'
 };
 
 let _db = null;
@@ -47,6 +49,13 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains(IDB.contribs)) {
         db.createObjectStore(IDB.contribs, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(IDB.exercises)) {
+        const s = db.createObjectStore(IDB.exercises, { keyPath: 'id' });
+        s.createIndex('date', 'date');
+      }
+      if (!db.objectStoreNames.contains(IDB.weights)) {
+        const s = db.createObjectStore(IDB.weights, { keyPath: 'date' });
       }
     };
     req.onsuccess = () => { _db = req.result; resolve(_db); };
@@ -140,6 +149,8 @@ const DEFAULT_PROFILE = {
   height: null, weight: null, age: null, gender: 'female',
   activity: 1.4, goal: 0,                 // goal: -400 减脂 / 0 保持 / +200 增肌
   targetKcal: 1800,
+  waterTarget: 8,        // 每日饮水目标（杯）
+  weightTarget: null,    // 目标体重（kg）
   bmr: null, tdee: null,
   indulgenceEmoji: '🎉',
   notifyOn: false,
@@ -265,9 +276,84 @@ async function getDayStats(date) {
 
 async function getDayInfo(date) {
   const d = await dbGet(IDB.days, date);
-  return d || { date, isIndulge: false, note: '' };
+  return d || { date, isIndulge: false, note: '', water: 0 };
 }
 async function saveDayInfo(info) { await dbPut(IDB.days, info); }
+
+/* ---------- 饮水（存于 days.water，单位：杯） ---------- */
+async function addWater(date, delta) {
+  const info = await getDayInfo(date);
+  info.water = Math.max(0, (Number(info.water) || 0) + delta);
+  await saveDayInfo(info);
+  return info.water;
+}
+
+/* ---------- 运动记录 ---------- */
+/* 常见运动 MET 值（估算消耗 kcal = MET × 体重kg × 时长h） */
+const EXERCISE_PRESETS = [
+  { name: '散步', met: 3.0, emoji: '🚶' },
+  { name: '快走', met: 4.3, emoji: '🏃' },
+  { name: '慢跑', met: 7.0, emoji: '🏃' },
+  { name: '骑行', met: 6.8, emoji: '🚴' },
+  { name: '跳绳', met: 11.0, emoji: '🤸' },
+  { name: '瑜伽', met: 3.0, emoji: '🧘' },
+  { name: '力量训练', met: 5.0, emoji: '🏋️' },
+  { name: '游泳', met: 6.0, emoji: '🏊' },
+  { name: '球类运动', met: 7.5, emoji: '⚽' },
+  { name: '爬楼梯', met: 6.0, emoji: '🪜' },
+  { name: '普拉提', met: 3.5, emoji: '🤸' },
+  { name: '拉伸', met: 2.5, emoji: '🧘' }
+];
+async function getExercises() {
+  const list = await dbGetAll(IDB.exercises);
+  return list.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || '').localeCompare(b.createdAt || ''));
+}
+async function getExercisesByDate(date) {
+  return (await getExercises()).filter((e) => e.date === date);
+}
+async function addExercise({ date, name, minutes, kcal, emoji }) {
+  const ex = {
+    id: uid(), date: date || todayKey(), name, minutes, kcal: Math.round(kcal),
+    emoji: emoji || '🏃', createdAt: nowISO()
+  };
+  await dbPut(IDB.exercises, ex);
+  return ex;
+}
+async function delExercise(id) { await dbDel(IDB.exercises, id); }
+async function getExerciseStats(date) {
+  const list = await getExercisesByDate(date);
+  let kcal = 0, minutes = 0;
+  list.forEach((e) => { kcal += e.kcal || 0; minutes += e.minutes || 0; });
+  return { count: list.length, kcal, minutes, records: list };
+}
+
+/* ---------- 体重追踪 ---------- */
+async function getWeights() {
+  const list = await dbGetAll(IDB.weights);
+  return list.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+}
+async function getWeight(date) { return dbGet(IDB.weights, date); }
+async function addWeight(date, kg) {
+  await dbPut(IDB.weights, { date, kg: Number(kg), createdAt: nowISO() });
+  return kg;
+}
+async function delWeight(date) { await dbDel(IDB.weights, date); }
+
+/* ---------- 连续打卡（连续记录天数，含今天） ---------- */
+async function getStreak() {
+  const recs = await getRecords();
+  if (!recs.length) return 0;
+  const days = new Set(recs.map((r) => r.date));
+  let streak = 0;
+  let d = todayKey();
+  // 今天没记录不算断签，从今天起向前数
+  for (let i = 0; i < 370; i++) {
+    if (days.has(d)) { streak++; d = addDays(d, -1); }
+    else if (i === 0) { d = addDays(d, -1); continue; }
+    else break;
+  }
+  return streak;
+}
 
 /* ---------- 多巴胺账单 ---------- */
 async function getOrders() {
@@ -332,13 +418,14 @@ function displayKcalRange(kcal, recordTotal) {
 
 /* ---------- 导出 ---------- */
 async function exportAllData() {
-  const [foods, records, orders, days, profile, contribs] = await Promise.all([
+  const [foods, records, orders, days, profile, contribs, exercises, weights] = await Promise.all([
     dbGetAll(IDB.foods), dbGetAll(IDB.records), dbGetAll(IDB.orders),
-    dbGetAll(IDB.days), dbGet(IDB.profile, 'main'), dbGetAll(IDB.contribs)
+    dbGetAll(IDB.days), dbGet(IDB.profile, 'main'), dbGetAll(IDB.contribs),
+    dbGetAll(IDB.exercises), dbGetAll(IDB.weights)
   ]);
   return {
-    app: '热量手账', version: '1.0.0', exportedAt: nowISO(),
-    profile, foods, records, orders, days, contribs
+    app: '热量手账', version: '1.1.0', exportedAt: nowISO(),
+    profile, foods, records, orders, days, contribs, exercises, weights
   };
 }
 function downloadJSON(data, filename) {
