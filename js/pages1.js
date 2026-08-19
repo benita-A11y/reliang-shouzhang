@@ -457,6 +457,7 @@ async function startAlbumFlow() {
 async function renderAlbumConfirm() {
   const imgs = ALBUM.imgs;
   const n = imgs.length;
+  if (!n) { closeSheet(); return; } // 全部删除后关闭
   let modeText = '批量拆解', modeDesc = '逐张识别后汇总，可勾选导入';
   if (n === 1) {
     const { w, h } = await imageSize(imgs[0]);
@@ -472,13 +473,17 @@ async function renderAlbumConfirm() {
   openSheet(`
     <button class="sheet-close" data-action="sheet:close">✕</button>
     <div class="sheet-title">🖼️ 已选择 ${n} 张图片</div>
-    <div class="album-previews">${imgs.map((d, i) => `<img src="${d}" data-action="album:preview" data-i="${i}">`).join('')}</div>
+    <div class="album-previews">${imgs.map((d, i) => `
+      <div class="ap-wrap">
+        <img src="${d}" data-action="album:preview" data-i="${i}">
+        <button class="ap-del" data-action="album:del" data-i="${i}">✕</button>
+      </div>`).join('')}</div>
     <div class="hint" style="text-align:center;margin:10px 0 0">
       识别模式：<b style="color:var(--brand)">${modeText}</b><br>
       <span class="muted small">${modeDesc}</span>
     </div>
     <div class="flex" style="gap:8px;margin-top:14px">
-      <button class="btn primary lg" style="flex:1" data-action="album:go">🚀 开始处理</button>
+      <button class="btn primary lg" style="flex:1" data-action="album:go">🔍 识别这些图片</button>
       <button class="btn ghost lg" data-action="album:reselect">🔄</button>
     </div>
     <div style="height:6px"></div>
@@ -493,6 +498,11 @@ registerAction('album:preview', (el) => {
     <div class="modal-title">图片预览</div>
     <img src="${img}" style="width:100%;border-radius:16px;max-height:60vh;object-fit:contain">
     <button class="btn primary block" data-action="modal:close" style="margin-top:14px">知道了</button>`);
+});
+registerAction('album:del', async (el) => {
+  const i = Number(el.dataset.i);
+  if (i >= 0 && i < ALBUM.imgs.length) ALBUM.imgs.splice(i, 1);
+  await renderAlbumConfirm();
 });
 registerAction('album:go', async () => {
   const imgs = ALBUM.imgs;
@@ -734,8 +744,7 @@ registerAction('batch:cat', (el) => {
 
 registerAction('batch:photo', () => pickPhoto((d) => { _bePhoto = d; if (_beTarget) _openEditSheet(_beTarget.obj); }, false));
 
-registerAction('batch:photo-clear', (el) => {
-  el.stopPropagation();
+registerAction('batch:photo-clear', () => {
   _bePhoto = '';
   if (_beTarget) _openEditSheet(_beTarget.obj);
 });
@@ -897,15 +906,38 @@ function openManualForm(existing, compare) {
 }
 registerAction('rec:manual', () => openManualForm());
 registerAction('form:photo', () => {
-  pickPhoto((dataURL) => {
-    window._formPhoto = dataURL;
-    openManualForm(null); // 重绘保持照片
-  });
+  // 需求三-第一步：点击照片占位区 → 弹出「拍照 / 从相册选择 / 取消」底部菜单
+  // 用 modal 承载菜单（不覆盖表单 sheet），取消/点背景不会丢失已输入内容
+  $('#modal-root').innerHTML = `
+    <div class="modal-back" data-action="modal:close"></div>
+    <div class="photo-menu">
+      <div class="photo-menu-title">📷 添加食物照片</div>
+      <button class="btn block" style="margin-bottom:10px" data-action="form:photo-camera">📷 拍照</button>
+      <button class="btn block" style="margin-bottom:10px" data-action="form:photo-album">🖼️ 从相册选择</button>
+      <button class="btn ghost block" data-action="modal:close">取消</button>
+    </div>`;
 });
-registerAction('form:photo-clear', (el) => {
-  el.stopPropagation();
+registerAction('form:photo-camera', () => {
+  closeModal();
+  pickPhoto((d) => applyFormPhoto(d), true); // capture 拍照
+});
+registerAction('form:photo-album', () => {
+  closeModal();
+  pickPhoto((d) => applyFormPhoto(d)); // 系统相册
+});
+async function applyFormPhoto(dataURL) {
+  // 需求 4.1：压缩至 480px/0.7 小图后存入；直接更新照片占位区，保留表单其他输入
+  window._formPhoto = await compressImage(dataURL, 480, 0.7);
+  const pick = $('#sheet-root .photo-pick');
+  if (pick) pick.innerHTML = `<img src="${window._formPhoto}"><div class="pp-x" data-action="form:photo-clear">✕</div>`;
+  toast('照片已添加，可直接保存 📷', 'green');
+}
+registerAction('form:photo-clear', () => {
   window._formPhoto = '';
-  openManualForm(null);
+  // 直接还原占位区，保留表单其他已输入内容
+  // （全局事件委托经 closest 分发，不会冒泡触发父级 form:photo）
+  const pick = $('#sheet-root .photo-pick');
+  if (pick) pick.innerHTML = '<span>＋</span><span>拍照 / 相册</span>';
 });
 registerAction('form:cat', (el) => {
   window._formCat = el.dataset.v;
