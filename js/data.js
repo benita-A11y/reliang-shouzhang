@@ -21,14 +21,14 @@ const DRINK_SPECS = {
   ],
   sizes: [
     { label: '中杯', coef: 1.0, priceCoef: 1.0 },
-    { label: '大杯', coef: 1.25, priceCoef: 1.3 }
+    { label: '大杯', coef: 1.2, priceCoef: 1.2 }
   ],
   toppings: [
-    { name: '珍珠', kcal: 60, price: 2 },
-    { name: '椰果', kcal: 35, price: 2 },
-    { name: '芋泥', kcal: 120, price: 4 },
-    { name: '奶盖', kcal: 150, price: 5 },
-    { name: '波霸', kcal: 70, price: 2 },
+    { name: '珍珠', kcal: 50, price: 2 },
+    { name: '椰果', kcal: 20, price: 1 },
+    { name: '芋泥', kcal: 60, price: 3 },
+    { name: '奶盖', kcal: 80, price: 4 },
+    { name: '波霸', kcal: 45, price: 2 },
     { name: '布丁', kcal: 80, price: 3 },
     { name: '红豆', kcal: 55, price: 2 },
     { name: '燕麦', kcal: 45, price: 3 }
@@ -326,6 +326,33 @@ const FOOD_CATEGORIES = [
   { name: '轻食沙拉', emoji: '🥗' },
   { name: '甜品面包', emoji: '🍰' }
 ];
+
+/* ---------- 店铺热度（评分 + 月售，平台热度展示用） ---------- */
+const SHOP_HOTNESS = {
+  mixue: { rating: 4.8, sales: '月售 8.6w+' },
+  guming: { rating: 4.9, sales: '月售 6.2w+' },
+  yidiandian: { rating: 4.7, sales: '月售 5.1w+' },
+  coco: { rating: 4.6, sales: '月售 4.8w+' },
+  chagee: { rating: 4.9, sales: '月售 7.5w+' },
+  heytea: { rating: 4.8, sales: '月售 5.6w+' },
+  naixue: { rating: 4.7, sales: '月售 4.2w+' },
+  luckin: { rating: 4.8, sales: '月售 12w+' },
+  cotti: { rating: 4.6, sales: '月售 9.3w+' },
+  mcd: { rating: 4.8, sales: '月售 15w+' },
+  kfc: { rating: 4.7, sales: '月售 13w+' },
+  hls: { rating: 4.5, sales: '月售 18w+' },
+  zl: { rating: 4.6, sales: '月售 7.8w+' },
+  ygf: { rating: 4.7, sales: '月售 8.1w+' },
+  shaxian: { rating: 4.4, sales: '月售 16w+' },
+  lanzhou: { rating: 4.5, sales: '月售 9.4w+' },
+  laoxiangji: { rating: 4.8, sales: '月售 6.9w+' },
+  xiangcunji: { rating: 4.6, sales: '月售 5.4w+' },
+  shaye: { rating: 4.7, sales: '月售 3.2w+' },
+  superzhan: { rating: 4.6, sales: '月售 2.7w+' },
+  bali: { rating: 4.7, sales: '月售 4.1w+' },
+  '85c': { rating: 4.6, sales: '月售 3.8w+' }
+};
+const shopHotness = (id) => SHOP_HOTNESS[id] || { rating: 4.5, sales: '月售 1w+' };
 
 /* ---------- 平台校准数据（演示“有更新”角标） ---------- */
 const PLATFORM_CALIBRATIONS = {
