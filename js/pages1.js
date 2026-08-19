@@ -324,7 +324,7 @@ registerPage('record', function (root) {
         <button class="btn primary" data-action="rec:camera">📷 拍照识别</button>
         <button class="btn" data-action="rec:album">🖼️ 从相册选择</button>
       </div>
-      <div class="hint" style="text-align:center;margin-top:10px">📷 拍单张识别 · 🖼️ 选汇总图可一键批量拆解入库 · 不联网也能用</div>
+      <div class="hint" style="text-align:center;margin-top:10px">📷 单张识别 · 🖼️ 支持多选/长图批量拆解入库 · 不联网也能用</div>
     </div>
     <div class="card">
       <div class="search">
@@ -353,39 +353,156 @@ registerAction('rec:quick', async (el) => {
   const f = FOODS.find((x) => x.id === el.dataset.id);
   if (f) askMealSheet(f);
 });
-/* 拍照识别（端侧模拟：本地匹配食物库） */
-function recPhotoStart(capture) {
-  pickPhoto(async (dataURL) => {
-    REC.photo = dataURL; REC.picked = null;
-    replaceSheet(`
-      <div class="sheet-title">🤖 正在识别…</div>
-      <div style="text-align:center;padding:26px 0">
-        <img src="${dataURL}" style="width:150px;height:150px;border-radius:24px;object-fit:cover;margin:0 auto;filter:blur(1px)">
-        <div class="muted small" style="margin-top:14px">本地模型推理中，请稍候</div>
-      </div>`);
-    setTimeout(async () => {
-      const pool = FOODS.length ? FOODS : [{ id: null, name: '未知食物', kcal: 300, category: '外卖', shop: '', portion: '一份', macros: null, price: 0 }];
-      const picks = pool.slice(0, Math.min(4, pool.length));
-      REC.candidates = picks;
-      const stats = await getDayStats(todayKey());
-      const remaining = Math.max(0, (PROFILE.targetKcal || 1800) - stats.kcal);
+/* ---------- 拍照 / 相册 → 单张 AI 识别 ----------
+ * 有密钥：真实视觉识别（名称+热量+置信度）
+ * 无密钥：本地食谱库匹配演示
+ */
+async function startSingleRecog(dataURL, src) {
+  REC.photo = dataURL; REC.picked = null; REC.src = src;
+  replaceSheet(`
+    <div class="sheet-title">🤖 正在识别…</div>
+    <div style="text-align:center;padding:26px 0">
+      <img src="${dataURL}" style="width:150px;height:150px;border-radius:24px;object-fit:cover;margin:0 auto;filter:blur(1px)">
+      <div class="muted small" style="margin-top:14px">${LLM.isConfigured() ? 'AI 视觉识别中，请稍候' : '本地匹配食谱库中，请稍候'}</div>
+    </div>`);
+  try {
+    const items = LLM.isConfigured()
+      ? await LLM.recognizeFoodsFromImage(dataURL, src)
+      : await localMatchCandidates(dataURL);
+    REC.candidates = items;
+    if (!items.length) {
       replaceSheet(`
-        <div class="sheet-title">识别到以下食物，选一个？</div>
-        ${picks.map((f, i) => {
-          const tl = trafficLight(f.kcal, remaining, PROFILE.recordTotal);
-          return `
-          <div class="food-line" data-action="rec:candidate" data-i="${i}">
-            <div class="fl-photo">${photoHTML(f)}</div>
-            <div class="fl-info"><div class="fl-name">${esc(f.name)} <span class="traffic ${tl.level}"></span></div>
-              <div class="fl-meta">${dk(f.kcal)} · 置信度 ${(92 + i * 2)}%</div></div>
-            <div class="fl-kcal">${f.kcal}kcal</div>
-          </div>`;}).join('')}
-        <button class="btn ghost block" data-action="rec:manual" style="margin-top:6px">都不是，手动录入</button>`);
-    }, 1200);
-  }, capture);
+        <div class="sheet-title">未能识别到食物</div>
+        <div class="empty-state" style="margin:10px 0">
+          <div class="es-icon">🤔</div>
+          <div class="es-sub">没能识别出食物，换一张更清晰的图吧。</div>
+        </div>
+        <button class="btn primary block" data-action="album:reselect">🖼️ 重新选图</button>
+        <div style="height:8px"></div>
+        <button class="btn block" data-action="rec:manual">＋ 手动录入</button>`);
+      return;
+    }
+    await renderSingleCandidates();
+  } catch (e) {
+    replaceSheet(`
+      <div class="sheet-title">识别失败了</div>
+      <div class="reason-box" style="border-left-color:var(--red);margin:10px 0 14px">${esc(e.message)}</div>
+      <button class="btn primary block" data-action="album:reselect">🔄 重新选图</button>
+      <div style="height:8px"></div>
+      <button class="btn block" data-action="rec:manual">＋ 手动录入</button>`);
+  }
 }
-registerAction('rec:camera', () => recPhotoStart(true));
-registerAction('rec:album', () => startBatchBreakdown());
+
+async function localMatchCandidates(dataURL) {
+  await _sleep(900);
+  const pool = FOODS.length ? FOODS : [{ id: null, name: '未知食物', kcal: 300, category: '外卖', shop: '', portion: '一份', macros: null, price: 0 }];
+  const picks = pool.slice(0, Math.min(4, pool.length));
+  return picks.map((f, i) => ({
+    i, id: f.id || null, name: f.name, kcal: f.kcal, unit: f.portion || '/份',
+    category: f.category || '零食', confidence: 92 + i * 2, note: '',
+    photo: f.photo || '', source: REC.src, demo: true, checked: true
+  }));
+}
+
+/* 单张识别候选列表：1 个食物选一个；识别出多个时提示可批量导入 */
+async function renderSingleCandidates() {
+  const items = REC.candidates;
+  const stats = await getDayStats(todayKey());
+  const remaining = Math.max(0, (PROFILE.targetKcal || 1800) - stats.kcal);
+  const multi = items.length > 1;
+  replaceSheet(`
+    <div class="sheet-title">识别到 ${items.length} 个食物</div>
+    ${multi ? `
+    <div class="reason-box" style="border-left-color:var(--brand);margin-bottom:10px">
+      🧩 图中识别出多个食物。<b style="color:var(--brand);cursor:pointer;text-decoration:underline" data-action="batch:single-to-batch">一键批量导入全部 →</b>
+    </div>` : ''}
+    ${items.map((f, i) => {
+      const tl = trafficLight(f.kcal, remaining, PROFILE.recordTotal);
+      const confTxt = f.confidence > 90 ? '高置信度' : f.confidence >= 60 ? '建议核对' : '需修正';
+      const confCls = f.confidence > 90 ? 'green' : f.confidence >= 60 ? 'yellow' : 'red';
+      const img = f.thumb || f.photo || REC.photo;
+      return `
+      <div class="food-line" data-action="rec:candidate" data-i="${i}">
+        <div class="fl-photo">${img ? `<img src="${img}" style="width:100%;height:100%;object-fit:cover;border-radius:14px">` : photoHTML(f)}</div>
+        <div class="fl-info"><div class="fl-name">${esc(f.name)} <span class="bconf ${confCls}" title="${confTxt}"></span></div>
+          <div class="fl-meta">${dk(f.kcal)}${f.unit ? ' ' + esc(f.unit) : ''} · ${confTxt}</div></div>
+        <div class="fl-kcal">${f.kcal}kcal</div>
+      </div>`;}).join('')}
+    <button class="btn ghost block" data-action="rec:manual" style="margin-top:6px">都不是，手动录入</button>`);
+}
+
+/* 单张识别结果 → 一键进入批量拆解预览（汇总图多食物场景） */
+registerAction('batch:single-to-batch', () => {
+  BATCH.photo = REC.photo; BATCH.items = REC.candidates.map((it) => ({ ...it, thumb: it.thumb || REC.photo }));
+  renderBatchPreview();
+});
+
+registerAction('rec:camera', () => pickPhoto((d) => startSingleRecog(d, '拍照识别'), true));
+registerAction('rec:album', () => startAlbumFlow());
+
+/* ============================================================
+ * 相册多选 → 选图确认 → 智能分流：
+ *   单张普通图 → 单张识别；单张长图(宽高比>2) / 多张 → 批量拆解
+ * ============================================================ */
+const ALBUM = { imgs: [], mode: 'batch' };
+
+async function startAlbumFlow() {
+  pickAlbumImages(async (imgs) => {
+    if (!imgs.length) return;
+    ALBUM.imgs = imgs;
+    await renderAlbumConfirm();
+  });
+}
+
+async function renderAlbumConfirm() {
+  const imgs = ALBUM.imgs;
+  const n = imgs.length;
+  let modeText = '批量拆解', modeDesc = '逐张识别后汇总，可勾选导入';
+  if (n === 1) {
+    const { w, h } = await imageSize(imgs[0]);
+    // 长图 = 长边/短边 > 2（横图或竖图截图均适用）
+    const isLong = w > 0 && h > 0 && Math.max(w, h) / Math.min(w, h) > 2;
+    if (isLong) { ALBUM.mode = 'batch'; modeText = '长图批量拆解'; modeDesc = '检测到长图，自动拆解其中所有食物'; }
+    else { ALBUM.mode = 'single'; modeText = '单张食物识别'; modeDesc = '识别图中食物的名称与热量'; }
+  } else {
+    ALBUM.mode = 'batch';
+    modeText = `批量拆解（${n} 张图）`;
+    modeDesc = '逐张识别后汇总，可勾选导入';
+  }
+  openSheet(`
+    <button class="sheet-close" data-action="sheet:close">✕</button>
+    <div class="sheet-title">🖼️ 已选择 ${n} 张图片</div>
+    <div class="album-previews">${imgs.map((d, i) => `<img src="${d}" data-action="album:preview" data-i="${i}">`).join('')}</div>
+    <div class="hint" style="text-align:center;margin:10px 0 0">
+      识别模式：<b style="color:var(--brand)">${modeText}</b><br>
+      <span class="muted small">${modeDesc}</span>
+    </div>
+    <div class="flex" style="gap:8px;margin-top:14px">
+      <button class="btn primary lg" style="flex:1" data-action="album:go">🚀 开始处理</button>
+      <button class="btn ghost lg" data-action="album:reselect">🔄</button>
+    </div>
+    <div style="height:6px"></div>
+    <button class="btn ghost block" data-action="album:perm">⚙️ 无法访问相册？查看帮助</button>`);
+}
+
+registerAction('album:reselect', () => startAlbumFlow());
+registerAction('album:perm', () => showAlbumPermGuide());
+registerAction('album:preview', (el) => {
+  const img = ALBUM.imgs[Number(el.dataset.i)];
+  if (img) openModal(`
+    <div class="modal-title">图片预览</div>
+    <img src="${img}" style="width:100%;border-radius:16px;max-height:60vh;object-fit:contain">
+    <button class="btn primary block" data-action="modal:close" style="margin-top:14px">知道了</button>`);
+});
+registerAction('album:go', async () => {
+  const imgs = ALBUM.imgs;
+  if (!imgs.length) return;
+  if (imgs.length === 1 && ALBUM.mode === 'single') {
+    await startSingleRecog(imgs[0], '相册识别');
+  } else {
+    await runBatchBreakdown(imgs, '相册');
+  }
+});
 
 /* ============================================================
  * 批量拆解录入：相册汇总图 → AI 拆解 → 预览勾选 → 一键导入食谱库
@@ -394,36 +511,48 @@ const ALL_CATS = ['食堂', '外卖', '自制', '饮品', '零食', '水果'];
 const BATCH = { photo: '', items: [], src: '图片导入' };
 const _sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* 第一步：选图 → 进度面板 → 识别 */
-async function startBatchBreakdown() {
-  pickPhoto(async (dataURL) => {
-    BATCH.photo = dataURL; BATCH.items = [];
-    replaceSheet(renderBatchProgress());
-    const steps = ['batch-step-0', 'batch-step-1', 'batch-step-2'];
-    for (let i = 0; i < steps.length; i++) {
-      await _sleep(420);
-      const el = document.getElementById(steps[i]);
-      if (el) el.classList.add('done');
-    }
-    try {
-      const items = await LLM.recognizeFoodsFromImage(dataURL, BATCH.src);
-      for (const it of items) {
-        if (it.box) it.thumb = await cropBox(dataURL, it.box); // 有坐标则裁剪小图
+/* 批量拆解：imgs 可为 1~9 张图，逐张 AI 识别后合并结果 */
+async function runBatchBreakdown(imgs, label = '图片导入') {
+  BATCH.photo = imgs[0] || ''; BATCH.items = []; BATCH.src = label;
+  replaceSheet(renderBatchProgress(imgs.length));
+  const steps = ['batch-step-0', 'batch-step-1', 'batch-step-2'];
+  for (let i = 0; i < steps.length; i++) {
+    await _sleep(420);
+    const el = document.getElementById(steps[i]);
+    if (el) el.classList.add('done');
+  }
+  try {
+    const all = [];
+    for (let n = 0; n < imgs.length; n++) {
+      const numEl = document.getElementById('batch-progress-num');
+      if (numEl) numEl.textContent = `（第 ${n + 1}/${imgs.length} 张）`;
+      const src = imgs.length > 1 ? `${label} · 第${n + 1}张` : label;
+      let items = [];
+      try {
+        items = await LLM.recognizeFoodsFromImage(imgs[n], src);
+      } catch (e) {
+        if (!/没有识别出任何食物/.test(e.message)) throw e;
+        items = [];
       }
-      const done = document.getElementById('batch-step-3');
-      if (done) done.classList.add('done');
-      await _sleep(320);
-      BATCH.items = items;
-      if (!items.length) { renderBatchEmpty(); return; }
-      renderBatchPreview();
-    } catch (e) {
-      if (/没有识别出任何食物/.test(e.message)) renderBatchEmpty();
-      else renderBatchError(e.message);
+      for (const it of items) {
+        if (it.box) it.thumb = await cropBox(imgs[n], it.box); // 有坐标则裁剪区域小图
+        if (!it.thumb) it.thumb = imgs[n];                      // 无坐标用整图作缩略图
+        all.push(it);
+      }
     }
-  }, false);
+    const done = document.getElementById('batch-step-3');
+    if (done) done.classList.add('done');
+    await _sleep(320);
+    BATCH.items = all;
+    if (!all.length) { renderBatchEmpty(); return; }
+    renderBatchPreview();
+  } catch (e) {
+    if (/没有识别出任何食物/.test(e.message)) renderBatchEmpty();
+    else renderBatchError(e.message);
+  }
 }
 
-function renderBatchProgress() {
+function renderBatchProgress(total = 1) {
   const steps = [
     ['🔍', '正在识别图片中的食物区域…'],
     ['🧾', '正在提取食物名称和热量…'],
@@ -431,7 +560,7 @@ function renderBatchProgress() {
     ['✅', '拆解完成！']
   ];
   return `
-    <div class="sheet-title">🔍 AI 正在拆解这张图中的食物…</div>
+    <div class="sheet-title">🔍 AI 正在拆解${total > 1 ? ' ' + total + ' 张图' : '这张图'}中的食物…<span id="batch-progress-num" class="muted small"></span></div>
     <div style="text-align:center;padding:4px 0 14px">
       <img src="${BATCH.photo}" style="width:110px;height:110px;border-radius:20px;object-fit:cover;margin:0 auto;filter:blur(0.6px)">
     </div>
@@ -465,6 +594,7 @@ function renderBatchItem(it, idx) {
   const confTxt = it.confidence > 90 ? '高置信度' : it.confidence >= 60 ? '建议核对' : '请手动修正';
   const confCls = it.confidence > 90 ? 'green' : it.confidence >= 60 ? 'yellow' : 'red';
   const img = it.thumb || it.photo || BATCH.photo;
+  const srcTxt = it.source;
   return `
     <div class="batch-item">
       <div class="batch-check ${it.checked ? '' : 'off'}" data-action="batch:toggle" data-i="${idx}">✓</div>
@@ -472,6 +602,7 @@ function renderBatchItem(it, idx) {
       <div class="bi-info">
         <div class="bi-name"><span>${esc(it.name)}</span><span class="bconf ${confCls}" title="${confTxt}"></span></div>
         <div class="bi-meta">${it.kcal} 大卡 ${esc(it.unit)} · ${confTxt}${it.edited ? ' · ✏️已改' : ''}</div>
+        ${srcTxt ? `<div class="bi-src">📎 来源：${esc(srcTxt)}</div>` : ''}
       </div>
       <div class="bi-edit" data-action="batch:edit" data-i="${idx}">✏️</div>
     </div>`;
@@ -554,15 +685,30 @@ registerAction('batch:import-go', async () => {
   switchPage('recipes');
 });
 
-/* 单条编辑：名称 / 热量 / 单位 / 分类 / 换图 */
-let _beIdx = null, _bePhoto = '', _beCat = '零食';
+/* 单条编辑：名称 / 热量 / 单位 / 分类 / 换图（批量条目与单张识别结果共用） */
+let _beIdx = null, _bePhoto = '', _beCat = '零食', _beTarget = null;
 
 registerAction('batch:edit', (el) => openBatchEdit(Number(el.dataset.i)));
 
 function openBatchEdit(idx) {
   const it = BATCH.items[idx];
   if (!it) return;
-  _beIdx = idx; _bePhoto = it.thumb || it.photo || ''; _beCat = it.category || '零食';
+  _beIdx = idx;
+  _beTarget = { obj: it, onSave: () => renderBatchPreview() };
+  _openEditSheet(it);
+}
+
+/* 单张识别结果修正入口 */
+function openSingleEdit() {
+  const it = REC.picked;
+  if (!it) return;
+  _beIdx = null;
+  _beTarget = { obj: it, onSave: (o) => { REC.picked = o; renderRecResult(o); } };
+  _openEditSheet(it);
+}
+
+function _openEditSheet(it) {
+  _bePhoto = it.thumb || it.photo || ''; _beCat = it.category || '零食';
   openSheet(`
     <div class="sheet-title">✏️ 编辑「${esc(it.name)}」</div>
     <div class="field">
@@ -586,16 +732,16 @@ registerAction('batch:cat', (el) => {
   document.querySelectorAll('#be-cat .chip').forEach((c) => c.classList.toggle('on', c === el));
 });
 
-registerAction('batch:photo', () => pickPhoto((d) => { _bePhoto = d; openBatchEdit(_beIdx); }, false));
+registerAction('batch:photo', () => pickPhoto((d) => { _bePhoto = d; if (_beTarget) _openEditSheet(_beTarget.obj); }, false));
 
 registerAction('batch:photo-clear', (el) => {
   el.stopPropagation();
   _bePhoto = '';
-  openBatchEdit(_beIdx);
+  if (_beTarget) _openEditSheet(_beTarget.obj);
 });
 
 registerAction('batch:edit-save', () => {
-  const it = BATCH.items[_beIdx];
+  const it = _beTarget && _beTarget.obj;
   if (!it) return;
   const name = document.getElementById('be-name').value.trim();
   const kcal = Number(document.getElementById('be-kcal').value);
@@ -605,7 +751,7 @@ registerAction('batch:edit-save', () => {
   it.category = _beCat || '零食';
   if (_bePhoto) it.thumb = _bePhoto;
   it.edited = true;
-  renderBatchPreview(); // 直接刷新预览（closeSheet 有 320ms 延迟清空，不能先关再开）
+  _beTarget.onSave(it); // 批量 → 刷新预览；单张 → 回显结果卡
 });
 
 /* 识别失败 / 空结果的兜底 */
@@ -632,7 +778,7 @@ function renderBatchError(msg) {
     <button class="btn block" data-action="rec:manual">＋ 手动录入</button>`);
 }
 
-registerAction('batch:retry', () => startBatchBreakdown());
+registerAction('batch:retry', () => startAlbumFlow());
 registerAction('rec:candidate', (el) => {
   const f = REC.candidates[Number(el.dataset.i)];
   if (f) { REC.picked = f; renderRecResult(f); }
@@ -642,14 +788,17 @@ async function renderRecResult(f) {
   const remaining = Math.max(0, target - (await getDayStats(todayKey())).kcal);
   const tl = trafficLight(f.kcal, remaining, PROFILE.recordTotal);
   const btnCls = tl.level === 'green' ? 'green' : tl.level === 'red' ? 'red' : 'primary';
+  const confTxt = f.confidence != null ? (f.confidence > 90 ? '🟢 高置信度' : f.confidence >= 60 ? '🟡 建议核对' : '🔴 请手动修正') : '';
+  const img = f.thumb || f.photo || REC.photo;
+  const inLib = !!f.id;
   replaceSheet(`
     <div class="sheet-title">识别结果</div>
     <div class="card" style="margin-bottom:0;box-shadow:none;background:rgba(0,0,0,0.03)">
       <div class="food-line" style="box-shadow:none;background:transparent;padding:4px 0">
-        <div class="fl-photo" style="width:56px;height:56px;border-radius:18px">${photoHTML(f, true)}</div>
+        <div class="fl-photo" style="width:56px;height:56px;border-radius:18px">${img ? `<img src="${img}" style="width:100%;height:100%;object-fit:cover;border-radius:18px">` : photoHTML(f, true)}</div>
         <div class="fl-info">
-          <div class="fl-name" style="font-size:16px">${esc(f.name)}</div>
-          <div class="fl-meta">${esc(f.portion || '约一份')} · 约 ${Math.max(30, Math.round(f.kcal / 1.3))}g · 预估 ${Math.round(f.kcal * 0.5)}~${f.kcal}kcal</div>
+          <div class="fl-name" style="font-size:16px">${esc(f.name)} ${confTxt ? `<span class="small" style="color:var(--sub);font-weight:600">${confTxt}</span>` : ''}</div>
+          <div class="fl-meta">${esc(f.portion || f.unit || '约一份')} · 约 ${Math.max(30, Math.round(f.kcal / 1.3))}g · 预估 ${Math.round(f.kcal * 0.5)}~${f.kcal}kcal</div>
         </div>
         <div class="fl-kcal" style="font-size:18px">${f.kcal}kcal</div>
       </div>
@@ -657,15 +806,44 @@ async function renderRecResult(f) {
       <div class="reason-box">${esc(tl.reason)}</div>
     </div>
     <div style="height:10px"></div>
-    <button class="btn ${btnCls} lg" data-action="rec:confirm">确认记录到${MEALS.find((m) => m.k === defaultMeal()).label}</button>
+    <div class="flex" style="gap:8px">
+      <button class="btn ${btnCls} lg" style="flex:1" data-action="rec:confirm">确认记录</button>
+      <button class="btn ghost lg" data-action="rec:fix">✏️ 修正</button>
+    </div>
+    ${inLib ? '' : `
     <div style="height:8px"></div>
-    <button class="btn ghost block" data-action="sheet:close">换一个</button>`);
+    <button class="btn block" data-action="rec:save-food">📥 存入我的食谱</button>`}
+    <div style="height:8px"></div>
+    <button class="btn ghost block" data-action="sheet:close">换一张</button>`);
 }
+registerAction('rec:fix', () => openSingleEdit());
+registerAction('rec:save-food', async () => {
+  const f = REC.picked;
+  if (!f || f.id) return;
+  const now = nowISO();
+  const id = uid();
+  await saveFood({
+    id, name: f.name, kcal: f.kcal, price: 0, shop: '',
+    portion: f.unit || '一份', category: f.category || '零食',
+    photo: f.thumb || f.photo || REC.photo || '', source: REC.src || 'AI识别',
+    createdAt: now, updatedAt: now, editCount: 0, macros: estimateMacros(f.kcal)
+  });
+  await loadFoods();
+  f.id = id; // 标记已入库，隐藏重复按钮
+  toast('已存入我的食谱 📖', 'green');
+  renderRecResult(f);
+});
 registerAction('rec:confirm', async () => {
   const f = REC.picked;
   if (!f) return;
   closeSheet();
-  await recordFood({ id: f.id || null, name: f.name, kcal: f.kcal, photo: f.photo || REC.photo, shop: f.shop, category: f.category, portion: f.portion, macros: f.macros, price: f.price }, defaultMeal());
+  await recordFood({
+    id: f.id || null, name: f.name, kcal: f.kcal,
+    photo: f.thumb || f.photo || REC.photo || '',
+    shop: f.shop, category: f.category,
+    portion: f.portion || f.unit || '一份',
+    macros: f.macros, price: f.price
+  }, defaultMeal());
 });
 /* 快速录入表单 */
 window._formPhoto = '';
