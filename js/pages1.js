@@ -9,11 +9,27 @@
 registerPage('home', async function (root) {
   const today = todayKey();
   const stats = await getDayStats(today);
+  const dayInfo = await getDayInfo(today);
+  const exStats = await getExerciseStats(today);
+  const streak = await getStreak();
+  const weights = await getWeights();
+  const latestWeight = weights.length ? weights[weights.length - 1] : null;
+  const prevWeight = weights.length > 1 ? weights[weights.length - 2] : null;
   const target = PROFILE.targetKcal || 1800;
-  const remaining = Math.max(0, target - stats.kcal);
+  const burned = exStats.kcal;
+  const budget = target + burned;                      // 目标 + 运动 = 今日可摄入额度
+  const remaining = Math.max(0, budget - stats.kcal);
   const mt = macroTargets(PROFILE, target);
-  const pct = Math.min(1, stats.kcal / target);
+  const pct = Math.min(1, stats.kcal / budget);
   const ringColor = remaining / target > 0.5 ? '#34C759' : remaining / target > 0.2 ? '#FF9500' : '#FF3B30';
+  const waterTarget = PROFILE.waterTarget || 8;
+  const water = dayInfo.water || 0;
+  const weightDiff = latestWeight && prevWeight ? +(latestWeight.kg - prevWeight.kg).toFixed(1) : null;
+  const weightSub = !latestWeight ? '记录今日体重'
+    : !prevWeight ? '今日已记录 ✓'
+    : weightDiff > 0 ? `较上次 ↑ ${weightDiff}kg`
+    : weightDiff < 0 ? `较上次 ↓ ${Math.abs(weightDiff)}kg`
+    : '与上次持平';
 
   const recent = await getRecentSix();
   const groups = { breakfast: [], lunch: [], dinner: [], snack: [] };
@@ -25,9 +41,33 @@ registerPage('home', async function (root) {
     <div class="page-head">
       <div>
         <div class="page-title">${fmtDateCN(new Date())}</div>
-        <div class="page-sub">${esc(greeting())} · 只为更好的自己</div>
+        <div class="page-sub">${esc(greeting())}${streak > 0 ? ` · 🔥 连续打卡 ${streak} 天` : ''}</div>
       </div>
       <button class="btn sm primary" data-action="nav:go" data-page="record">＋ 记录</button>
+    </div>
+    <div class="stats-grid">
+      <div class="card stat-card">
+        <div class="sc-top">
+          <span class="sc-icon">💧</span><span class="sc-name">饮水</span>
+          <span class="sc-ctl">
+            <b class="sc-btn" data-action="home:water-add">＋</b>
+            <b class="sc-btn" data-action="home:water-sub">−</b>
+          </span>
+        </div>
+        <div class="sc-num">${water}<small>/${waterTarget}杯</small></div>
+        <div class="sc-bar"><i style="width:${Math.min(100, (water / waterTarget) * 100)}%"></i></div>
+        <div class="sc-sub">${water >= waterTarget ? '今日目标达成 🎉' : '还差 ' + (waterTarget - water) + ' 杯'}</div>
+      </div>
+      <div class="card stat-card" data-action="home:sport">
+        <div class="sc-top"><span class="sc-icon">🏃</span><span class="sc-name">运动</span></div>
+        <div class="sc-num">${burned}<small>kcal</small></div>
+        <div class="sc-sub">${exStats.count ? `${exStats.count} 项 · ${exStats.minutes}分钟` : '记录运动消耗'}</div>
+      </div>
+      <div class="card stat-card" data-action="home:weight">
+        <div class="sc-top"><span class="sc-icon">⚖️</span><span class="sc-name">体重</span></div>
+        <div class="sc-num">${latestWeight ? latestWeight.kg : '—'}<small>kg</small></div>
+        <div class="sc-sub">${weightSub}</div>
+      </div>
     </div>
     ${needCount > 0 ? `
     <div class="card" style="display:flex;align-items:center;gap:12px;padding:16px 18px">
@@ -48,7 +88,7 @@ registerPage('home', async function (root) {
         <div class="ring-center">
           <div class="rc-num">${remaining.toLocaleString()} <small style="font-size:14px;color:var(--sub)">kcal</small></div>
           <div class="rc-label">今日剩余热量</div>
-          <div class="rc-extra" style="color:${ringColor}">目标 ${target}kcal · 已吃 ${stats.kcal}kcal</div>
+          <div class="rc-extra" style="color:${ringColor}">目标 ${target}kcal${burned ? ' · 运动 +' + burned : ''} · 已吃 ${stats.kcal}kcal</div>
         </div>
       </div>
       <div style="margin-top:18px">
@@ -122,6 +162,140 @@ registerAction('rec:del', async (el) => {
   await delRecord(el.dataset.id);
   toast('已删除', 'brand');
   rerender();
+});
+
+/* ============================================================
+ * 首页状态卡：饮水 / 运动 / 体重
+ * ============================================================ */
+registerAction('home:water-add', async () => {
+  await addWater(todayKey(), 1);
+  toast('咕噜咕噜 +1 杯 💧', 'blue');
+  rerender();
+});
+registerAction('home:water-sub', async () => {
+  await addWater(todayKey(), -1);
+  rerender();
+});
+
+const SPORT_STATE = { name: null, met: 0, emoji: '🏃', minutes: 30 };
+async function estSportKcal() {
+  const weights = await getWeights();
+  const kg = Number(PROFILE.weight) || (weights.length ? weights[weights.length - 1].kg : null) || 60;
+  return Math.round(SPORT_STATE.met * kg * (SPORT_STATE.minutes / 60));
+}
+function renderSportSheet() {
+  openSheet(`
+    <div class="sheet-title">🏃 记录运动</div>
+    <div class="field"><label>运动类型</label>
+      <div class="chips">
+        ${EXERCISE_PRESETS.map((e, i) => `
+          <div class="chip${SPORT_STATE.name === e.name ? ' on' : ''}" data-action="sport:pick"
+               data-i="${i}" data-met="${e.met}" data-name="${e.name}" data-emoji="${e.emoji}">${e.emoji} ${e.name}</div>`).join('')}
+      </div>
+    </div>
+    <div class="field"><label>时长</label>
+      <div class="chips">
+        ${[15, 30, 45, 60].map((m) => `
+          <div class="chip${SPORT_STATE.minutes === m ? ' on' : ''}" data-action="sport:min" data-m="${m}">${m} 分钟</div>`).join('')}
+      </div>
+    </div>
+    <div class="sport-est" id="sport-est">预计消耗 <b>${SPORT_STATE.name ? estSportKcalSync() : 0}</b> kcal</div>
+    <button class="btn primary block" data-action="sport:save" style="margin-top:14px">保存记录</button>
+    <button class="btn ghost block" data-action="sheet:close" style="margin-top:8px">取消</button>`);
+}
+// 同步估算（用于 sheet 首屏渲染；实际值 sport:pick 后异步刷新）
+function estSportKcalSync() {
+  const kg = Number(PROFILE.weight) || 60;
+  return Math.round(SPORT_STATE.met * kg * (SPORT_STATE.minutes / 60));
+}
+registerAction('home:sport', async () => {
+  const ex = await getExerciseStats(todayKey());
+  if (ex.count) {
+    openSheet(`
+      <div class="sheet-title">🏃 今日运动</div>
+      ${ex.records.map((r) => `
+        <div class="food-line">
+          <div class="fl-photo">${r.emoji || '🏃'}</div>
+          <div class="fl-info"><div class="fl-name">${esc(r.name)} · ${r.minutes} 分钟</div>
+            <div class="fl-meta">消耗 ${r.kcal}kcal</div></div>
+          <div class="fl-del" data-action="sport:del" data-id="${r.id}">✕</div>
+        </div>`).join('')}
+      <div class="hint" style="margin-top:4px">共消耗 <b style="color:var(--green)">${ex.kcal}kcal</b>，已计入今日可摄入额度 🔥</div>
+      <button class="btn primary block" data-action="home:sport-add" style="margin-top:12px">＋ 再记一笔</button>
+      <button class="btn ghost block" data-action="sheet:close" style="margin-top:8px">取消</button>`);
+    return;
+  }
+  if (!SPORT_STATE.name) { SPORT_STATE.name = EXERCISE_PRESETS[0].name; SPORT_STATE.met = EXERCISE_PRESETS[0].met; SPORT_STATE.emoji = EXERCISE_PRESETS[0].emoji; }
+  renderSportSheet();
+});
+registerAction('home:sport-add', () => renderSportSheet());
+registerAction('sport:del', async (el) => {
+  await delExercise(el.dataset.id);
+  toast('已删除运动记录', 'brand');
+  rerender();
+});
+registerAction('sport:pick', async (el) => {
+  SPORT_STATE.name = el.dataset.name;
+  SPORT_STATE.met = Number(el.dataset.met);
+  SPORT_STATE.emoji = el.dataset.emoji;
+  const kcal = await estSportKcal();
+  renderSportSheet();
+  const est = $('#sport-est');
+  if (est) est.innerHTML = `预计消耗 <b>${kcal}</b> kcal`;
+});
+registerAction('sport:min', async (el) => {
+  SPORT_STATE.minutes = Number(el.dataset.m);
+  const kcal = await estSportKcal();
+  renderSportSheet();
+  const est = $('#sport-est');
+  if (est) est.innerHTML = `预计消耗 <b>${kcal}</b> kcal`;
+});
+registerAction('sport:save', async () => {
+  if (!SPORT_STATE.name) { toast('请选择运动类型', 'red'); return; }
+  const kcal = await estSportKcal();
+  await addExercise({ date: todayKey(), name: SPORT_STATE.name, minutes: SPORT_STATE.minutes, kcal, emoji: SPORT_STATE.emoji });
+  closeSheet();
+  toast(`已记录 ${SPORT_STATE.name} ${SPORT_STATE.minutes}分钟 -${kcal}kcal 🔥`, 'green');
+  rerender();
+});
+
+/* 体重 */
+async function renderWeightSheet() {
+  const weights = await getWeights();
+  const recent = weights.slice(-10).reverse();
+  openSheet(`
+    <div class="sheet-title">⚖️ 体重记录</div>
+    <div class="field"><label>今日体重（kg）</label>
+      <input class="input" type="number" id="weight-input" step="0.1" min="20" max="300" placeholder="${PROFILE.weight ? '当前 ' + PROFILE.weight : '如 60.5'}">
+    </div>
+    <button class="btn primary block" data-action="weight:save">保存今日体重</button>
+    <div class="sheet-title small" style="margin-top:18px">📈 最近记录</div>
+    ${recent.length ? recent.map((w) => `
+      <div class="food-line">
+        <div class="fl-photo">⚖️</div>
+        <div class="fl-info"><div class="fl-name">${w.kg} kg</div>
+          <div class="fl-meta">${w.date}${w.date === todayKey() ? ' · 今天' : ''}</div></div>
+        <div class="fl-del" data-action="weight:del" data-date="${w.date}">✕</div>
+      </div>`).join('') : `<div class="muted small" style="padding:8px 2px">还没有记录，从今天开始记录吧</div>`}
+    <div style="height:6px"></div>
+    <button class="btn ghost block" data-action="sheet:close">取消</button>`);
+}
+registerAction('home:weight', () => renderWeightSheet());
+registerAction('weight:save', async () => {
+  const input = $('#weight-input');
+  const kg = Number(input && input.value);
+  if (!kg || kg < 20 || kg > 300) { toast('请输入有效体重', 'red'); return; }
+  await addWeight(todayKey(), kg);
+  PROFILE.weight = kg;
+  await saveProfile(PROFILE);
+  closeSheet();
+  toast('体重已记录 ⚖️', 'green');
+  rerender();
+});
+registerAction('weight:del', async (el) => {
+  await delWeight(el.dataset.date);
+  toast('已删除', 'brand');
+  await renderWeightSheet();
 });
 
 /* ============================================================
