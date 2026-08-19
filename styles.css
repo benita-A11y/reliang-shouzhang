@@ -686,6 +686,75 @@ img { display: block; }
 .bconf.red { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
 .btn[disabled] { opacity: .45; pointer-events: none; }
 
+/* ---------- 觅食：品牌横向滚动栏 ---------- */
+.brand-scroll { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 12px; scrollbar-width: none; }
+.brand-scroll::-webkit-scrollbar { display: none; }
+.brand-pill { flex-shrink: 0; width: 58px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
+.brand-pill:active { transform: scale(.94); }
+.brand-logo { width: 46px; height: 46px; border-radius: 50%; background: var(--nc-soft, var(--blue-soft)); display: flex; align-items: center; justify-content: center; font-size: 22px; box-shadow: var(--shadow-soft); }
+.brand-name { font-size: 10.5px; font-weight: 600; color: var(--text); text-align: center; white-space: nowrap; max-width: 58px; overflow: hidden; text-overflow: ellipsis; }
+
+/* 分类筛选横向滚动 */
+.cat-scroll { flex-wrap: nowrap; overflow-x: auto; padding: 2px 2px 10px; scrollbar-width: none; }
+.cat-scroll::-webkit-scrollbar { display: none; }
+.cat-scroll .chip { flex-shrink: 0; }
+
+/* ---------- 觅食：店铺卡片评分热度 ---------- */
+.shop-rating { font-size: 12.5px; margin-top: 3px; display: flex; align-items: center; gap: 4px; }
+.shop-rating b { color: var(--orange); font-size: 13px; }
+
+/* ---------- 店铺详情页（美团/饿了么风格） ---------- */
+.shop-detail-head { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 8px; padding: 10px 4px 12px; background: var(--bg); }
+.shop-back { width: 34px; height: 34px; border-radius: 50%; background: var(--card); box-shadow: var(--shadow-soft); border: none; font-size: 17px; color: var(--text); cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.shop-back:active { transform: scale(.94); }
+.shop-detail-title { flex: 1; min-width: 0; font-size: 17px; font-weight: 800; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shop-fav { border: none; background: linear-gradient(135deg, #FFB800, #FF9500); color: #fff; font-size: 12px; font-weight: 700; padding: 8px 12px; border-radius: 20px; cursor: pointer; box-shadow: 0 4px 12px rgba(255,149,0,.3); flex-shrink: 0; }
+.shop-fav:active { transform: scale(.95); }
+.shop-hero { display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 22px; background: var(--card); box-shadow: var(--shadow-soft); margin-bottom: 14px; }
+.shop-hero-logo { width: 62px; height: 62px; border-radius: 20px; background: var(--nc-soft, var(--blue-soft)); display: flex; align-items: center; justify-content: center; font-size: 30px; flex-shrink: 0; }
+.shop-hero-info { flex: 1; min-width: 0; }
+.shop-hero-name { font-size: 18px; font-weight: 800; }
+.shop-hero-meta { font-size: 12.5px; color: var(--sub); margin-top: 3px; display: flex; align-items: center; gap: 4px; }
+.shop-hero-meta b { color: var(--orange); }
+.shop-hero-sub { font-size: 11.5px; color: var(--sub); margin-top: 4px; }
+
+/* 系列 Tab */
+.series-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 12px; scrollbar-width: none; }
+.series-tabs::-webkit-scrollbar { display: none; }
+.series-tab { flex-shrink: 0; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; color: var(--sub); background: var(--card); box-shadow: var(--shadow-soft); cursor: pointer; }
+.series-tab.on { background: var(--brand); color: #fff; box-shadow: 0 4px 12px rgba(94,92,230,.3); }
+.series-tab:active { transform: scale(.96); }
+
+/* 商品列表 */
+.menu-list { display: flex; flex-direction: column; gap: 10px; }
+.menu-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 18px; background: var(--card); box-shadow: var(--shadow-soft); cursor: pointer; }
+.menu-item:active { transform: scale(.985); }
+.mi-photo { width: 54px; height: 54px; border-radius: 16px; background: var(--nc-soft, var(--blue-soft)); display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; }
+.mi-info { flex: 1; min-width: 0; }
+.mi-name { font-size: 14.5px; font-weight: 700; }
+.mi-meta { font-size: 11.5px; color: var(--sub); margin-top: 3px; }
+.point-it { border: none; background: linear-gradient(135deg, #5E5CE6, #6E6BF0); color: #fff; font-size: 13px; font-weight: 700; padding: 10px 18px; border-radius: 22px; cursor: pointer; box-shadow: 0 4px 12px rgba(94,92,230,.3); flex-shrink: 0; }
+.point-it:active { transform: scale(.95); }
+
+/* 为你推荐（横向滚动） */
+.rec-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: none; }
+.rec-row::-webkit-scrollbar { display: none; }
+.rec-card { flex-shrink: 0; width: 108px; padding: 10px; border-radius: 16px; background: var(--card); box-shadow: var(--shadow-soft); cursor: pointer; }
+.rec-card:active { transform: scale(.96); }
+.rec-photo { width: 44px; height: 44px; border-radius: 14px; background: var(--nc-soft, var(--blue-soft)); display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 8px; }
+.rec-name { font-size: 12.5px; font-weight: 700; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rec-meta { font-size: 11px; color: var(--sub); margin-top: 4px; }
+
+/* ---------- 规格选择器：已选规格汇总 + 三出口 ---------- */
+.spec-summary { margin: 14px 0 8px; padding: 10px 14px; border-radius: 14px; background: var(--brand-soft, rgba(94,92,230,.08)); color: var(--brand); font-size: 12.5px; font-weight: 700; text-align: center; }
+.spec-exits { display: flex; gap: 8px; }
+.exit-btn { flex: 1; border: none; border-radius: 16px; padding: 12px 6px; font-size: 13.5px; font-weight: 800; line-height: 1.3; cursor: pointer; transition: transform .15s; }
+.exit-btn:active { transform: scale(.96); }
+.exit-btn small { display: block; font-size: 10px; font-weight: 500; opacity: .75; margin-top: 2px; }
+.exit-btn.record { background: linear-gradient(135deg, #34C759, #30D158); color: #fff; box-shadow: 0 6px 18px rgba(52,199,89,.3); }
+.exit-btn.bill { background: linear-gradient(135deg, #FF2D55, #FF375F); color: #fff; box-shadow: 0 6px 18px rgba(255,45,85,.3); }
+.exit-btn.fav { background: linear-gradient(135deg, #FFB800, #FF9500); color: #fff; box-shadow: 0 6px 18px rgba(255,149,0,.3); }
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 560px) {
   #sidebar { position: fixed; top: 0; bottom: 0; left: 0; box-shadow: 6px 0 30px rgba(0,0,0,0.06); }
