@@ -18,6 +18,7 @@ registerPage('board', async function (root) {
     <div class="tabs" style="max-width:220px">
       ${[['month', '🗓️ 月视图'], ['week', '📅 周视图']].map(([k, t]) => `<div class="tab-item ${BOARD.view === k ? 'on' : ''}" data-action="board:view" data-v="${k}">${t}</div>`).join('')}
     </div>
+    ${await renderWeekSummary()}
     ${BOARD.view === 'month' ? (totalCount ? await renderMonth() : renderBoardEmpty()) : await renderWeek()}
     <div id="board-charts">${await renderCharts()}</div>
     <div id="board-days">${await renderDayList()}</div>
@@ -31,6 +32,54 @@ registerPage('board', async function (root) {
     }, 60);
   }
 });
+async function renderWeekSummary() {
+  const today = todayKey();
+  const dow = (new Date().getDay() + 6) % 7;   // 周一=0
+  const monday = addDays(today, -dow);
+  const days = [];
+  for (let i = 0; i < 7; i++) days.push(addDays(monday, i));
+  const daysSet = new Set(days);
+  const recs = await getRecords();
+  const dayStats = {};
+  recs.forEach((r) => { if (daysSet.has(r.date)) dayStats[r.date] = (dayStats[r.date] || 0) + (r.kcal || 0); });
+  const infos = await Promise.all(days.map((d) => getDayInfo(d)));
+  const target = PROFILE.targetKcal || 1800;
+  let recorded = 0, total = 0, qualified = 0, waterCups = 0;
+  days.forEach((d, i) => {
+    if (dayStats[d] !== undefined) {
+      recorded++; total += dayStats[d];
+      if (!infos[i].isIndulge && dayStats[d] <= target) qualified++;
+    }
+    waterCups += infos[i].water || 0;
+  });
+  const ex = await getExercises();
+  let exKcal = 0, exCount = 0;
+  ex.forEach((e) => { if (daysSet.has(e.date)) { exKcal += e.kcal || 0; exCount++; } });
+  const avg = recorded ? Math.round(total / recorded) : 0;
+  const weights = await getWeights();
+  let weightText = '';
+  if (weights.length) {
+    const weekWeights = weights.filter((w) => daysSet.has(w.date));
+    const last = weekWeights.length ? weekWeights[weekWeights.length - 1] : weights[weights.length - 1];
+    if (PROFILE.weightTarget) {
+      const diff = +(last.kg - PROFILE.weightTarget).toFixed(1);
+      weightText = diff > 0 ? `距目标还差 ${diff}kg` : diff < 0 ? `已低于目标 ${Math.abs(diff)}kg 🎉` : '已达目标体重 🎉';
+    } else {
+      weightText = `最近 ${last.kg}kg`;
+    }
+  }
+  return `
+    <div class="card week-summary">
+      <div class="ws-title">📋 本周摘要 <span class="muted" style="font-weight:600">${monday.slice(5).replace('-', '/')} - ${today.slice(5).replace('-', '/')}</span></div>
+      <div class="ws-grid">
+        <div class="ws-item"><b>${recorded}</b><span>记录天数</span></div>
+        <div class="ws-item"><b>${avg}</b><span>日均摄入</span></div>
+        <div class="ws-item"><b>${qualified}</b><span>达标天数</span></div>
+        <div class="ws-item"><b>${exKcal}</b><span>运动消耗</span></div>
+      </div>
+      <div class="ws-sub">💧 ${waterCups} 杯水 · ${exCount ? `🏃 ${exCount} 次运动` : '本周暂无运动'}${weightText ? ' · ⚖️ ' + weightText : ''}</div>
+    </div>`;
+}
 function renderBoardEmpty() {
   return `
     <div class="card" style="padding:38px 20px;text-align:center">
@@ -210,6 +259,7 @@ async function boardDayHandler(date) {
     </div>`);
 }
 async function dayNoteHandler(date) {
+  if (!date) date = todayKey();
   const info = await getDayInfo(date);
   info.note = $('#day-note').value.trim();
   await saveDayInfo(info);
@@ -218,6 +268,7 @@ async function dayNoteHandler(date) {
   rerender();
 }
 async function dayIndulgeHandler(date) {
+  if (!date) date = todayKey();
   const info = await getDayInfo(date);
   info.isIndulge = !info.isIndulge;
   if (info.isIndulge && !info.note) info.note = '今天想好好吃一顿';
