@@ -662,6 +662,30 @@ img { display: block; }
 .hint { font-size: 11.5px; color: var(--sub2); line-height: 1.55; }
 .pill-num { background: var(--brand-soft); color: var(--brand); font-weight: 800; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-variant-numeric: tabular-nums; }
 
+/* ---------- 批量拆解录入 ---------- */
+.batch-steps { padding: 4px 6px 2px; }
+.batch-step { display: flex; align-items: center; gap: 12px; padding: 9px 4px; opacity: .32; transition: opacity .3s; }
+.batch-step.done { opacity: 1; }
+.bs-dot { width: 34px; height: 34px; border-radius: 12px; background: var(--brand-soft); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.batch-step.done .bs-dot { background: var(--green-soft); }
+.batch-step.done .bs-dot:nth-child(1) { background: var(--green-soft); }
+.bs-text { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.batch-item { display: flex; align-items: center; gap: 12px; background: var(--card); border-radius: 18px; padding: 10px 12px; margin-bottom: 8px; box-shadow: var(--shadow-soft); }
+.batch-check { width: 24px; height: 24px; border-radius: 8px; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex-shrink: 0; cursor: pointer; transition: all .15s; }
+.batch-check.off { background: rgba(0,0,0,0.12); color: transparent; }
+.bi-photo { width: 52px; height: 52px; border-radius: 14px; overflow: hidden; flex-shrink: 0; background: var(--blue-soft); cursor: pointer; }
+.bi-photo img { width: 100%; height: 100%; object-fit: cover; }
+.bi-info { flex: 1; min-width: 0; }
+.bi-name { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.bi-meta { font-size: 11.5px; color: var(--sub); margin-top: 2px; }
+.bi-edit { color: var(--sub2); font-size: 15px; padding: 8px; cursor: pointer; }
+.bi-edit:hover { color: var(--brand); }
+.bconf { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.bconf.green { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.bconf.yellow { background: var(--yellow); box-shadow: 0 0 0 3px rgba(255,204,0,.2); }
+.bconf.red { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 560px) {
   #sidebar { position: fixed; top: 0; bottom: 0; left: 0; box-shadow: 6px 0 30px rgba(0,0,0,0.06); }
