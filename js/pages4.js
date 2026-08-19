@@ -140,7 +140,7 @@ function renderRecoCard(it) {
         <div class="reco-name">${esc(it.name)} <span class="muted small">${it.shop ? esc(it.shop) : ''}${it.price ? ' · ¥' + it.price : ''}</span></div>
         <div class="reco-reason">${esc(it.reason || '')}</div>
         <div class="reco-meal-btns">
-          ${MEALS.map((m) => `<span class="chip" data-action="nutri:record" data-name="${esc(it.name)}" data-kcal="${it.kcal}" data-price="${it.price || 0}" data-meal="${m.k}" data-cat="${recCat}" data-shop="${esc(it.shop || '')}" data-macros='${mStr}'>${m.emoji}${m.label}</span>`).join('')}
+          ${MEALS.map((m) => `<span class="chip" data-action="nutri:record" data-name="${esc(it.name)}" data-kcal="${it.kcal}" data-price="${it.price || 0}" data-meal="${m.k}" data-cat="${recCat}" data-shop="${esc(it.shop || '')}" data-flavor="${esc(it.flavor || '')}" data-macros='${mStr}'>${m.emoji}${m.label}</span>`).join('')}
           <span class="chip" style="background:var(--red-soft);color:var(--red)" data-action="nutri:bill" data-name="${esc(it.name)}" data-kcal="${it.kcal}" data-price="${it.price || 0}" data-emoji="${it.emoji || '🍽️'}" data-shopid="${it.shopId || ''}" data-shop="${esc(it.shop || '')}" data-cat="${it.cat || '外卖'}">🧾 过把瘾</span>
         </div>
       </div>
@@ -224,6 +224,9 @@ registerAction('nutri:record', async (el) => {
     shop: el.dataset.shop || '', category: el.dataset.cat || '食堂', portion: '一份',
     macros: el.dataset.macros ? JSON.parse(el.dataset.macros) : null
   }, el.dataset.meal);
+  // 需求 6：真实采纳推荐时记录口味信号（统一为带「的」标签）
+  const flv = el.dataset.flavor;
+  if (flv) await learnTasteSignal('nutri:record', flv.endsWith('的') ? flv : flv + '的');
 });
 registerAction('nutri:bill', (el) => {
   // 平台商品走真实店铺规格；其余构造伪店铺进入多巴胺账单
@@ -242,7 +245,7 @@ function highFreqCombo() {
     for (const k in freq) if (freq[k] > bestN) { bestN = freq[k]; best = k; }
     return best ? best.split('|') : [];
   };
-  if (prefs.length) {
+  if (prefs.length >= 10) {
     return { flavor: top(prefs.map((p) => p.taste || [])), ingredient: top(prefs.map((p) => p.food_type || [])) };
   }
   // 兼容旧数据：直接采用已学习的 tastePrefs
