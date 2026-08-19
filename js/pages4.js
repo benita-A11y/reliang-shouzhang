@@ -3,12 +3,20 @@
  * ============================================================ */
 'use strict';
 
-const NUTRI = { step: 1, flavor: [], ingredient: [], meal: 'lunch0' };
+const NUTRI = { step: 1, flavor: [], ingredient: [], meal: 'lunch0', any: false };
+const NUTRI_FLAVORS = ['辣的', '咸香的', '清淡的', '甜口的'];
+const NUTRI_INGREDIENTS = ['想吃肉', '想吃蔬菜', '想吃主食', '想吃蛋/豆腐'];
 
 /* ============================================================
  * 营养秘书（AI 推荐/复盘）
  * ============================================================ */
 registerPage('nutri', async function (root) {
+  // 偏好学习≥10次：进入页面时默认选中高频组合（每会话仅执行一次）
+  if (!window._nutriDefaulted && (PROFILE.tasteCount || 0) >= 10 && !NUTRI.flavor.length && !NUTRI.ingredient.length) {
+    const hf = highFreqCombo();
+    if (hf) { NUTRI.flavor = hf.flavor.slice(); NUTRI.ingredient = hf.ingredient.slice(); }
+    window._nutriDefaulted = true;
+  }
   const stats = await getDayStats(todayKey());
   const analysis = analyzeDay(stats, PROFILE);
   const yesterday = await getDayInfo(addDays(todayKey(), -1));
@@ -30,29 +38,32 @@ function renderNutriStep1(analysis, yIndulged, overDays) {
   const advice = (yIndulged || overDays >= 2) ? indulgenceAdjustMsg(overDays)
     : analysis.over ? '今天热量有点超了，接下来吃得克制一点吧'
     : `今天还剩 ${analysis.remaining}kcal，蛋白质还差 ${analysis.proteinNeed}g，让秘书帮你安排`;
+  const cnt = PROFILE.tasteCount || 0;
+  const hint = cnt >= 10 ? `🎯 已积累 ${cnt} 次偏好，已为你默认选择` : `可多选，越选越懂你（已积累 ${cnt} 次偏好）`;
   return `
     <div class="card" style="background:linear-gradient(160deg,#AF52DE,#7D3FBF);color:#fff;border:none">
       <div class="small" style="opacity:.9">今日体检报告</div>
       <div style="font-size:19px;font-weight:800;margin:8px 0 12px">${esc(advice)}</div>
       <div class="flex" style="gap:8px;flex-wrap:wrap">
-        <span class="chip" style="background:rgba(255,255,255,.18);color:#fff">已吃 ${analysis.stats.kcal}kcal / ${analysis.target}kcal</span>
-        <span class="chip" style="background:rgba(255,255,255,.18);color:#fff">蛋白 ${analysis.stats.protein}/${analysis.mt.protein}g</span>
-        <span class="chip" style="background:rgba(255,255,255,.18);color:#fff">碳水 ${analysis.stats.carbs}/${analysis.mt.carbs}g</span>
+        <span class="chip" style="background:rgba(255,255,255,.18);color:#fff">剩余 ${analysis.remaining}kcal</span>
+        <span class="chip" style="background:rgba(255,255,255,.18);color:#fff">蛋白缺口 ${analysis.proteinNeed}g</span>
+        <span class="chip" style="background:rgba(255,255,255,.18);color:#fff">碳水剩余 ${analysis.carbsNeed}g</span>
+        <span class="chip" style="background:rgba(255,255,255,.18);color:#fff">已摄入 ${analysis.stats.kcal}kcal</span>
       </div>
     </div>
     <div class="card">
       <div class="section-title" style="margin-top:0">第一步 · 今天想吃什么口味？</div>
-      <div class="muted small" style="margin-bottom:10px">${(PROFILE.tasteCount || 0) >= 10 ? `🎯 已熟悉你的口味（${PROFILE.tasteCount}次），推荐会自动优先你的偏好` : `可多选，越选越懂你（已积累 ${PROFILE.tasteCount} 次偏好）`}</div>
+      <div class="muted small" style="margin-bottom:10px">${hint}</div>
       <div class="spec-title">味道</div>
       <div class="chips" style="margin-bottom:14px">
-        ${['辣的', '咸香的', '清淡的', '甜口的'].map((f) => `<button class="chip ${NUTRI.flavor.includes(f) ? 'on' : ''}" data-action="nutri:flavor" data-v="${f}">${f}</button>`).join('')}
+        ${NUTRI_FLAVORS.map((f) => `<button class="chip ${NUTRI.flavor.includes(f) ? 'on' : ''}" data-action="nutri:flavor" data-v="${f}">${f}</button>`).join('')}
       </div>
       <div class="spec-title">食材</div>
       <div class="chips" style="margin-bottom:18px">
-        ${['想吃肉', '想吃蔬菜', '想吃主食', '想吃蛋/豆腐'].map((f) => `<button class="chip ${NUTRI.ingredient.includes(f) ? 'on' : ''}" data-action="nutri:ingredient" data-v="${f}">${f}</button>`).join('')}
+        ${NUTRI_INGREDIENTS.map((f) => `<button class="chip ${NUTRI.ingredient.includes(f) ? 'on' : ''}" data-action="nutri:ingredient" data-v="${f}">${f}</button>`).join('')}
       </div>
       <div class="flex" style="gap:10px">
-        <button class="btn ghost" style="flex:1" data-action="nutri:any">🎲 随便</button>
+        <button class="btn ghost ${NUTRI.any ? 'on' : ''}" style="flex:1" data-action="nutri:any">🎲 随便</button>
         <button class="btn primary" style="flex:2" data-action="nutri:next">给我推荐 →</button>
       </div>
     </div>`;
@@ -72,6 +83,14 @@ function renderNutriStep2(analysis) {
 async function renderNutriRec() {
   const box = $('#nutri-rec');
   if (!box) return;
+  // 加载动画
+  box.innerHTML = `
+    <div class="card" style="padding:32px 20px;text-align:center">
+      <div class="n-loading" style="font-size:40px">🤖</div>
+      <div style="margin-top:10px;font-weight:800;font-size:15px">秘书正在为你搭配...</div>
+      <div class="muted small" style="margin-top:5px">结合今日缺口与口味，从食谱库和觅食平台挑选</div>
+    </div>`;
+  await new Promise((r) => setTimeout(r, 420));
   const stats = await getDayStats(todayKey());
   const analysis = analyzeDay(stats, PROFILE);
   const mealKey = NUTRI.meal;
@@ -90,34 +109,68 @@ async function renderNutriRec() {
     const lu = sumMacros(recsToday.filter((r) => r.meal === 'lunch'));
     src = Object.assign({}, analysis, { stats: lu, carbs: lu.carbs, protein: lu.protein });
   }
-  const pool = FOODS.map((f) => ({
-    name: f.name, kcal: f.kcal, emoji: foodEmoji(f), photo: f.photo, price: f.price,
-    flavor: f.category === '饮品' ? '甜口' : '清淡', macros: f.macros
-  })).concat([
-    { name: '无糖酸奶', kcal: 120, emoji: '🥛', price: 6, flavor: '清淡', macros: { protein: 7, carbs: 10, fat: 5 } },
-    { name: '鸡胸肉沙拉', kcal: 330, emoji: '🥗', price: 23, flavor: '清淡', macros: { protein: 32, carbs: 20, fat: 10 } },
-    { name: '一小把坚果', kcal: 200, emoji: '🥜', price: 8, flavor: '咸香', macros: { protein: 6, carbs: 7, fat: 18 } },
-    { name: '热牛奶', kcal: 150, emoji: '🥛', price: 5, flavor: '清淡', macros: { protein: 8, carbs: 12, fat: 8 } }
-  ]);
-  const rec = recommendNextMeal(mealForRec, src, PROFILE.tastePrefs, pool, mealKey);
+  // 推荐算法：缺口类型 → 口味筛选 → 食谱库优先 → 平台预置补充 → 兜底
+  const rec = recommendNextMeal(mealForRec, src, PROFILE.tastePrefs, buildNutriPool(), mealKey, { flavor: NUTRI.flavor, ingredient: NUTRI.ingredient });
+  const found = rec.items.length;
   box.innerHTML = `
     ${rec.note ? `<div class="reason-box" style="border-left-color:var(--purple);margin-bottom:12px">${esc(rec.note)}</div>` : ''}
-    ${rec.items.length ? rec.items.map((it) => `
-      <div class="reco-card">
-        <div class="reco-photo">${it.photo ? `<img src="${it.photo}">` : it.emoji}</div>
-        <div class="reco-info">
-          <div class="reco-name">${esc(it.name)} <span class="muted small">${it.price ? '¥' + it.price : ''}</span></div>
-          <div class="reco-reason">${esc(it.reason || '')}</div>
-          <div class="reco-meal-btns">
-            ${MEALS.map((m) => `<span class="chip" data-action="nutri:record" data-name="${esc(it.name)}" data-kcal="${it.kcal}" data-price="${it.price || 0}" data-meal="${m.k}">${m.emoji}${m.label}</span>`).join('')}
-          </div>
-        </div>
-        <div class="reco-kcal">${it.kcal}kcal</div>
-      </div>`).join('') : `<div class="empty-state" style="padding:26px"><div class="es-icon">🥤</div><div class="es-sub">今天额度紧张，喝杯水吃点水果就好</div></div>`}
-    <div class="hint" style="margin-top:4px">💡 点一下即可记录到对应餐次 · 推荐优先匹配你的食谱库</div>`;
+    <div class="flex" style="justify-content:space-between;align-items:center;margin:2px 2px 10px">
+      <div class="small" style="font-weight:800;color:var(--purple)">为你找到 ${found} 个推荐</div>
+      <button class="btn sm ghost" data-action="nutri:back">← 重选口味</button>
+    </div>
+    ${rec.relaxed ? `<div class="hint" style="margin:-4px 2px 10px">😌 没有完全符合口味的，已为你放宽条件</div>` : ''}
+    ${found ? rec.items.map((it) => renderRecoCard(it)).join('') : renderNutriEmpty(rec)}
+    <div class="hint" style="margin-top:4px">💡 点一下即可记录到对应餐次 · 想吃又怕胖？点「过把瘾」省下热量</div>`;
 }
-registerAction('nutri:flavor', (el) => toggleArr(NUTRI.flavor, el.dataset.v));
-registerAction('nutri:ingredient', (el) => toggleArr(NUTRI.ingredient, el.dataset.v));
+function renderRecoCard(it) {
+  const mStr = it.macros ? esc(JSON.stringify(it.macros)) : '';
+  const recCat = it.cat === '奶茶咖啡' ? '饮品' : (it.cat || '食堂');
+  return `
+    <div class="reco-card">
+      <div class="reco-photo">${it.photo ? `<img src="${it.photo}">` : (it.emoji || '🍽️')}</div>
+      <div class="reco-info">
+        <div class="reco-name">${esc(it.name)} <span class="muted small">${it.shop ? esc(it.shop) : ''}${it.price ? ' · ¥' + it.price : ''}</span></div>
+        <div class="reco-reason">${esc(it.reason || '')}</div>
+        <div class="reco-meal-btns">
+          ${MEALS.map((m) => `<span class="chip" data-action="nutri:record" data-name="${esc(it.name)}" data-kcal="${it.kcal}" data-price="${it.price || 0}" data-meal="${m.k}" data-cat="${recCat}" data-shop="${esc(it.shop || '')}" data-macros='${mStr}'>${m.emoji}${m.label}</span>`).join('')}
+          <span class="chip" style="background:var(--red-soft);color:var(--red)" data-action="nutri:bill" data-name="${esc(it.name)}" data-kcal="${it.kcal}" data-price="${it.price || 0}" data-emoji="${it.emoji || '🍽️'}" data-shopid="${it.shopId || ''}" data-shop="${esc(it.shop || '')}" data-cat="${it.cat || '外卖'}">🧾 过把瘾</span>
+        </div>
+      </div>
+      <div class="reco-kcal">${it.kcal}kcal</div>
+    </div>`;
+}
+function renderNutriEmpty(rec) {
+  const hadTaste = NUTRI.flavor.length || NUTRI.ingredient.length;
+  return `
+    <div class="empty-state" style="padding:30px 20px">
+      <div class="es-icon">🥺</div>
+      <div class="es-title">没有找到完全匹配的推荐</div>
+      <div class="es-sub">${hadTaste ? '试试减少口味选择，或点「随便」让秘书放宽条件' : '今天的额度比较紧张，先让肠胃歇一歇'}</div>
+    </div>
+    <div class="reason-box" style="border-left-color:var(--purple);margin-top:12px">
+      <div class="small" style="font-weight:800;margin-bottom:4px">🥤 通用建议</div>
+      <div class="muted small">${esc(rec.note || '多喝温水，吃个苹果或黄瓜垫垫；下一顿正餐保持「一拳主食 + 一掌心肉 + 两拳蔬菜」的配比。')}</div>
+    </div>`;
+}
+function buildNutriPool() {
+  // 食谱库优先 → 平台预置补充 → 兜底池
+  const userPool = FOODS.map((f) => ({
+    name: f.name, kcal: f.kcal, price: f.price || 0, emoji: foodEmoji(f), photo: f.photo || '',
+    shop: f.shop || '', shopId: '', cat: f.category || '食堂', flavor: f.category === '饮品' ? '甜口' : '咸香',
+    macros: f.macros || estimateMacros(f.kcal), _src: 'user'
+  }));
+  const platformPool = [...BRANDS, ...SHOPS].flatMap((s) => (s.items || []).map((it, i) => ({
+    name: it.name, kcal: it.kcal, price: it.price || 0, emoji: s.emoji || '🍽️', photo: it.photo || '',
+    shop: s.name, shopId: s.id, cat: s.cat || '外卖', flavor: s.flavor || '咸香',
+    macros: it.macros || estimateMacros(it.kcal), _src: 'platform', _i: i
+  })));
+  const fallbackPool = Object.keys(FALLBACK_POOL).flatMap((k) => FALLBACK_POOL[k].map((x) => Object.assign({}, x, { cat: '外卖', shopId: '', shop: '', _src: 'fallback' })));
+  const seen = new Set();
+  const dedupe = (arr) => arr.filter((x) => { if (seen.has(x.name)) return false; seen.add(x.name); return true; });
+  return [...dedupe(userPool), ...dedupe(platformPool), ...dedupe(fallbackPool)];
+}
+registerAction('nutri:flavor', (el) => { toggleArr(NUTRI.flavor, el.dataset.v); NUTRI.any = false; });
+registerAction('nutri:ingredient', (el) => { toggleArr(NUTRI.ingredient, el.dataset.v); NUTRI.any = false; });
 function toggleArr(arr, v) {
   const i = arr.indexOf(v);
   if (i >= 0) arr.splice(i, 1); else arr.push(v);
@@ -135,24 +188,62 @@ async function consecutiveOverDays() {
   return n;
 }
 registerAction('nutri:meal', (el) => { NUTRI.meal = el.dataset.v; renderPage('nutri'); });
-registerAction('nutri:any', async () => { NUTRI.flavor = []; NUTRI.ingredient = []; await nutriNext(); });
+registerAction('nutri:any', async () => { NUTRI.flavor = []; NUTRI.ingredient = []; NUTRI.any = true; await nutriNext(); });
 registerAction('nutri:next', async () => { await nutriNext(); });
 async function nutriNext() {
-  if (NUTRI.flavor.length || NUTRI.ingredient.length) {
+  // 校验：未选口味且未点「随便」
+  if (!NUTRI.any && !NUTRI.flavor.length && !NUTRI.ingredient.length) {
+    toast('请先选择今天想吃什么口味，或点击「随便」让秘书为你安排', 'red');
+    return;
+  }
+  // 偏好学习：仅用户主动选择（非随便）时记录一条
+  if (!NUTRI.any && (NUTRI.flavor.length || NUTRI.ingredient.length)) {
+    PROFILE.preferences = PROFILE.preferences || [];
+    PROFILE.preferences.push({ user_id: PROFILE.id || 'main', timestamp: nowISO(), taste: NUTRI.flavor.slice(), food_type: NUTRI.ingredient.slice(), meal_type: NUTRI.meal });
+    if (PROFILE.preferences.length > 60) PROFILE.preferences = PROFILE.preferences.slice(-60);
     PROFILE.tastePrefs.flavor = PROFILE.tastePrefs.flavor.concat(NUTRI.flavor).slice(-10);
     PROFILE.tastePrefs.ingredient = PROFILE.tastePrefs.ingredient.concat(NUTRI.ingredient).slice(-10);
     PROFILE.tasteCount = (PROFILE.tasteCount || 0) + 1;
     await saveProfile(PROFILE);
-  } else if ((PROFILE.tasteCount || 0) >= 10 && PROFILE.tastePrefs.flavor.length) {
-    toast('🎯 已自动按你的口味偏好优先推荐', 'brand');
   }
   NUTRI.step = 2;
   renderPage('nutri');
 }
 registerAction('nutri:back', () => { NUTRI.step = 1; renderPage('nutri'); });
 registerAction('nutri:record', async (el) => {
-  await recordFood({ id: null, name: el.dataset.name, kcal: Number(el.dataset.kcal), price: Number(el.dataset.price), shop: '', category: '食堂', portion: '一份', macros: null }, el.dataset.meal);
+  await recordFood({
+    id: null, name: el.dataset.name, kcal: Number(el.dataset.kcal), price: Number(el.dataset.price || 0),
+    shop: el.dataset.shop || '', category: el.dataset.cat || '食堂', portion: '一份',
+    macros: el.dataset.macros ? JSON.parse(el.dataset.macros) : null
+  }, el.dataset.meal);
 });
+registerAction('nutri:bill', (el) => {
+  // 平台商品走真实店铺规格；其余构造伪店铺进入多巴胺账单
+  const real = SHOP_MAP[el.dataset.shopid];
+  const item = { name: el.dataset.name, kcal: Number(el.dataset.kcal), price: Number(el.dataset.price || 0) };
+  const shop = real || { id: 'nutri-' + item.name, name: el.dataset.shop || '营养秘书', emoji: el.dataset.emoji || '🍽️', cat: el.dataset.cat || '外卖', flavor: '咸香' };
+  openBillFlow(item, shop);
+});
+/* 统计偏好历史中的最高频组合（≥10次后默认选中） */
+function highFreqCombo() {
+  const prefs = PROFILE.preferences || [];
+  const top = (arr) => {
+    const freq = {};
+    arr.forEach((a) => { if (!a || !a.length) return; const k = a.slice().sort().join('|'); freq[k] = (freq[k] || 0) + 1; });
+    let best = null, bestN = 0;
+    for (const k in freq) if (freq[k] > bestN) { bestN = freq[k]; best = k; }
+    return best ? best.split('|') : [];
+  };
+  if (prefs.length) {
+    return { flavor: top(prefs.map((p) => p.taste || [])), ingredient: top(prefs.map((p) => p.food_type || [])) };
+  }
+  // 兼容旧数据：直接采用已学习的 tastePrefs
+  const tp = PROFILE.tastePrefs || {};
+  if ((tp.flavor && tp.flavor.length) || (tp.ingredient && tp.ingredient.length)) {
+    return { flavor: (tp.flavor || []).slice(), ingredient: (tp.ingredient || []).slice() };
+  }
+  return null;
+}
 
 /* ============================================================
  * 我的（个人中心）
