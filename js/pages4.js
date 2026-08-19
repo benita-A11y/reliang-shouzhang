@@ -18,7 +18,12 @@ registerPage('nutri', async function (root) {
     window._nutriDefaulted = true;
   }
   const stats = await getDayStats(todayKey());
+  const exStats = await getExerciseStats(todayKey());
   const analysis = analyzeDay(stats, PROFILE);
+  if (exStats.kcal > 0) {
+    analysis.remaining = Math.max(0, analysis.remaining + exStats.kcal);
+    analysis.exerciseKcal = exStats.kcal;
+  }
   const yesterday = await getDayInfo(addDays(todayKey(), -1));
   const yStats = await getDayStats(addDays(todayKey(), -1));
   const yIndulged = yesterday.isIndulge || (yStats.count > 0 && yStats.kcal > (PROFILE.targetKcal || 1800));
@@ -49,6 +54,7 @@ function renderNutriStep1(analysis, yIndulged, overDays) {
         <span class="chip" style="background:rgba(255,255,255,.18);color:#fff">蛋白缺口 ${analysis.proteinNeed}g</span>
         <span class="chip" style="background:rgba(255,255,255,.18);color:#fff">碳水剩余 ${analysis.carbsNeed}g</span>
         <span class="chip" style="background:rgba(255,255,255,.18);color:#fff">已摄入 ${analysis.stats.kcal}kcal</span>
+        ${analysis.exerciseKcal ? `<span class="chip" style="background:rgba(255,255,255,.18);color:#fff">运动 +${analysis.exerciseKcal}kcal</span>` : ''}
       </div>
     </div>
     <div class="card">
@@ -92,7 +98,9 @@ async function renderNutriRec() {
     </div>`;
   await new Promise((r) => setTimeout(r, 420));
   const stats = await getDayStats(todayKey());
+  const exStats = await getExerciseStats(todayKey());
   const analysis = analyzeDay(stats, PROFILE);
+  if (exStats.kcal > 0) analysis.remaining = Math.max(0, analysis.remaining + exStats.kcal);
   const mealKey = NUTRI.meal;
   const isSnack = mealKey.startsWith('snack');
   const mealForRec = isSnack ? 'snack' : mealKey === 'lunch0' ? 'lunch' : 'dinner';
@@ -169,8 +177,8 @@ function buildNutriPool() {
   const dedupe = (arr) => arr.filter((x) => { if (seen.has(x.name)) return false; seen.add(x.name); return true; });
   return [...dedupe(userPool), ...dedupe(platformPool), ...dedupe(fallbackPool)];
 }
-registerAction('nutri:flavor', (el) => { toggleArr(NUTRI.flavor, el.dataset.v); NUTRI.any = false; });
-registerAction('nutri:ingredient', (el) => { toggleArr(NUTRI.ingredient, el.dataset.v); NUTRI.any = false; });
+registerAction('nutri:flavor', (el) => { toggleArr(NUTRI.flavor, el.dataset.v); NUTRI.any = false; rerender(); });
+registerAction('nutri:ingredient', (el) => { toggleArr(NUTRI.ingredient, el.dataset.v); NUTRI.any = false; rerender(); });
 function toggleArr(arr, v) {
   const i = arr.indexOf(v);
   if (i >= 0) arr.splice(i, 1); else arr.push(v);
@@ -358,6 +366,8 @@ registerAction('prof:body-save', async () => {
   const calc = calcBodyData(PROFILE);
   PROFILE.bmr = calc.bmr; PROFILE.tdee = calc.tdee; PROFILE.targetKcal = calc.targetKcal;
   await saveProfile(PROFILE);
+  // 身体数据里的体重同步写入「今日体重」记录，便于追踪趋势
+  await addWeight(todayKey(), w);
   closeSheet(); toast(`每日目标已更新为 ${calc.targetKcal}kcal 🎯`, 'brand'); rerender();
 });
 registerAction('prof:contribs', async () => {
@@ -385,6 +395,15 @@ registerAction('prof:settings', () => {
         <div class="muted small">开启后餐前收到秘书的温柔提醒</div></div>
         <input type="checkbox" id="notify-switch" ${PROFILE.notifyOn ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--brand)"></div>
       <div class="divider"></div>
+      <div><div style="font-weight:700;font-size:14.5px;margin-bottom:10px">每日饮水目标</div>
+        <div class="chips">${[4, 6, 8, 10].map((v) => `<button class="chip ${(PROFILE.waterTarget || 8) === v ? 'on' : ''}" data-action="prof:water-target" data-v="${v}">${v} 杯</button>`).join('')}</div></div>
+      <div class="divider"></div>
+      <div><div style="font-weight:700;font-size:14.5px;margin-bottom:10px">目标体重（kg）</div>
+        <div class="flex" style="gap:8px;align-items:center">
+          <input class="input" style="flex:1" type="number" id="weight-target-input" step="0.1" min="20" max="300" value="${PROFILE.weightTarget || ''}" placeholder="${PROFILE.weight ? '当前 ' + PROFILE.weight : '如 55'}">
+          <button class="btn sm primary" data-action="prof:weight-target-save">保存</button>
+        </div></div>
+      <div class="divider"></div>
       <div><div style="font-weight:700;font-size:14.5px;margin-bottom:10px">放纵日 Emoji 选择</div>
         <div class="chips">${['🎉', '🍔', '🍕', '🎂', '🎊', '✨'].map((e) => `<button class="chip ${PROFILE.indulgenceEmoji === e ? 'on' : ''}" data-action="prof:emoji" data-v="${e}">${e}</button>`).join('')}</div></div>
     </div>
@@ -394,6 +413,19 @@ registerAction('prof:settings', () => {
     await saveProfile(PROFILE);
     toast(PROFILE.notifyOn ? '已开启餐前提醒 🔔' : '已关闭通知', 'brand');
   });
+});
+registerAction('prof:water-target', async (el) => {
+  PROFILE.waterTarget = Number(el.dataset.v);
+  await saveProfile(PROFILE);
+  toast(`饮水目标已设为 ${PROFILE.waterTarget} 杯 💧`, 'blue');
+  renderSheetChips(el);
+});
+registerAction('prof:weight-target-save', async () => {
+  const v = Number($('#weight-target-input') && $('#weight-target-input').value);
+  if (v && (v < 20 || v > 300)) { toast('请输入有效体重', 'red'); return; }
+  PROFILE.weightTarget = v || null;
+  await saveProfile(PROFILE);
+  toast(v ? `目标体重已设为 ${v}kg 🎯` : '已清除目标体重', 'green');
 });
 registerAction('prof:emoji', async (el) => {
   PROFILE.indulgenceEmoji = el.dataset.v;
