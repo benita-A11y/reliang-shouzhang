@@ -74,7 +74,7 @@ function analyzeDay(stats, profile) {
 }
 
 /* ---------- 营养秘书推荐逻辑 ---------- */
-function recommendNextMeal(meal, analysis, prefs, foodPool, slot) {
+function recommendNextMeal(meal, analysis, prefs, foodPool, slot, taste) {
   const tips = [];
   let strategy = '均衡';
   let note = '';
@@ -118,27 +118,64 @@ function recommendNextMeal(meal, analysis, prefs, foodPool, slot) {
     const fav = slot === 'snack0' ? ['酸奶', '苹果'] : slot === 'snack1' ? ['坚果', '咖啡'] : ['牛奶', '虾'];
     pool = pool.filter((x) => fav.some((k) => x.name.includes(k))).concat(pool.filter((x) => !fav.some((k) => x.name.includes(k))));
   }
-  if (prefs && prefs.flavor && prefs.flavor.length) {
-    const f = prefs.flavor;
-    pool = pool.filter((x) => {
-      const xf = x.flavor || '';
-      return f.some((pf) => xf.includes(pf));
-    }).concat(pool);
-  }
-  const seen = new Set();
-  const out = [];
-  for (const x of pool) {
-    if (seen.has(x.name) || out.length >= 3) continue;
-    // 按策略筛选
-    if (strategy === '压主食补蛋白' && (x.macros ? x.macros.protein < 15 : false)) continue;
-    if (strategy === '高蛋白低碳水' && (x.macros ? x.macros.protein < 20 : false)) continue;
-    if (strategy === '极致清淡' && (x.flavor && x.flavor.includes('辣'))) continue;
-    if (meal === 'snack' && x.kcal > 250) continue;
-    if (analysis.remaining > 0 && x.kcal > analysis.remaining + 150) continue;
-    seen.add(x.name);
-    out.push(Object.assign({}, x, { reason: buildReason(strategy, x, analysis, meal, note) }));
-  }
-  return { strategy, note, items: out };
+  // 口味/食材筛选：本次选择优先，其次历史偏好
+  const sel = (taste && (taste.flavor && taste.flavor.length || taste.ingredient && taste.ingredient.length)) ? taste : (prefs || {});
+  const wantF = sel.flavor || [];
+  const wantI = sel.ingredient || [];
+  // 归一化：选项「咸香的/辣的」与数据「咸香/辣」统一为不带「的」后比对
+  const norm = (s) => (s || '').replace(/的/g, '');
+  const isSweetDrink = (x) => norm(x.flavor).includes('甜口');
+  const ING = {
+    '想吃肉': (x) => {
+      const n = x.name || '';
+      if (/鸡|鱼|虾|猪|羊|鸭|培根|火腿|牛腩|牛柳|鸡腿|鸡翅|肉丝|肉片|肉饼|肉末|卤肉|烤肉|炸鸡|牛排|香肠|蟹|肉丸|牛肉|猪肉|羊肉|鸭肉|鸡肉|狮子头|东坡肉|肉夹馍/.test(n)) return true;
+      if (isSweetDrink(x)) return false; // 奶茶果茶不算肉食
+      return ((x.macros && x.macros.protein) || 0) >= 18; // 高蛋白兜底
+    },
+    '想吃蔬菜': (x) => /菜|蔬|沙拉|生菜|菠菜|西兰花|菌|木耳|黄瓜|番茄|芦笋|秋葵/.test(x.name || ''),
+    '想吃主食': (x) => /饭|面|粉|粥|馒头|面包|饼|薯|玉米|燕麦|米线|米/.test(x.name || ''),
+    '想吃蛋/豆腐': (x) => /蛋|豆腐|豆干|腐竹|豆花|豆皮|豆奶/.test(x.name || '')
+  };
+  // 口味冲突：选「清淡」避开辣，选「辣」避开清淡/甜口，选「甜口」避开辣
+  const conflict = (xf) => xf && (
+    (wantF.some((pf) => norm(pf) === '清淡') && norm(xf).includes('辣')) ||
+    (wantF.some((pf) => norm(pf) === '辣') && (norm(xf).includes('清淡') || norm(xf).includes('甜口'))) ||
+    (wantF.some((pf) => norm(pf) === '甜口') && norm(xf).includes('辣'))
+  );
+  const fOk = (xf) => !wantF.length || !xf || wantF.some((pf) => norm(xf).includes(norm(pf)));
+  const iOk = (x) => !wantI.length || wantI.some((k) => ING[k] ? ING[k](x) : false);
+  const iScore = (x) => wantI.reduce((s, k) => s + (ING[k] && ING[k](x) ? 1.5 : 0), 0);
+  const passStrategy = (x) => {
+    if (strategy === '压主食补蛋白' && (x.macros ? x.macros.protein < 15 : false)) return false;
+    if (strategy === '高蛋白低碳水' && (x.macros ? x.macros.protein < 20 : false)) return false;
+    if (strategy === '极致清淡' && (x.flavor && x.flavor.includes('辣'))) return false;
+    if (meal === 'snack' && x.kcal > 250) return false;
+    if (analysis.remaining > 0 && x.kcal > analysis.remaining + 150) return false;
+    return true;
+  };
+  const collect = (flavorStrict) => {
+    const seen = new Set();
+    const out = [];
+    for (const x of pool) {
+      if (seen.has(x.name) || out.length >= 4) continue;
+      if (!passStrategy(x)) continue;
+      if (flavorStrict && !fOk(x.flavor)) continue;
+      if (flavorStrict && conflict(x.flavor)) continue;
+      if (!iOk(x)) continue;
+      seen.add(x.name);
+      // 来源优先级：食谱库 > 平台预置 > 兜底；口味匹配 / 食材匹配 / 额度内 额外加分
+      const score = (x._src === 'user' ? 3 : x._src === 'platform' ? 1.5 : 0)
+        + (wantF.length && fOk(x.flavor) ? 2 : 0)
+        + iScore(x)
+        + (x.kcal <= analysis.remaining ? 1 : 0)
+        + (x._i != null ? 0.4 / (1 + x._i) : 0);
+      out.push(Object.assign({}, x, { score, reason: buildReason(strategy, x, analysis, meal, note) }));
+    }
+    return out.sort((a, b) => b.score - a.score).slice(0, 3);
+  };
+  const strict = wantF.length ? collect(true) : collect(false);
+  const items = strict.length ? strict : collect(false);
+  return { strategy, note, items, relaxed: wantF.length > 0 && strict.length === 0 && items.length > 0 };
 }
 
 function buildReason(strategy, food, analysis, meal, baseNote) {
