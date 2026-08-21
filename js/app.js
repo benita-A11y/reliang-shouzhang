@@ -33,6 +33,7 @@ const NAV = [
   { key: 'bill', emoji: '🧾', label: '多巴胺账单', color: '#FF3B30', soft: 'rgba(255,59,48,.12)' },
   { key: 'board', emoji: '📊', label: '数据看板', color: '#007AFF', soft: 'rgba(0,122,255,.12)' },
   { key: 'nutri', emoji: '🤖', label: '营养秘书', color: '#AF52DE', soft: 'rgba(175,82,222,.12)' },
+  { key: 'wheel', emoji: '🎯', label: '今天吃什么', color: '#FF9500', soft: 'rgba(255,149,0,.16)' },
   { key: 'profile', emoji: '👤', label: '我的', color: '#8E8E93', soft: 'rgba(142,142,147,.14)' }
 ];
 const MEAL_EMOJI = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' };
