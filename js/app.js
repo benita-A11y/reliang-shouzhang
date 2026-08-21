@@ -67,7 +67,7 @@ async function init() {
   await seedIfNeeded();
   PROFILE = await loadProfile();
   await refreshRecordTotal();
-  buildShopMap();
+  await buildShopMap();
   renderNav();
   bindGlobalEvents();
   if ('serviceWorker' in navigator) {
@@ -76,12 +76,13 @@ async function init() {
   switchPage('home');
   if (!PROFILE.onboarded) setTimeout(() => openOnboarding(), 500);
 }
-function buildShopMap() {
+async function buildShopMap() {
   SHOP_MAP = {};
   [...BRANDS, ...SHOPS].forEach((s) => {
     SHOP_MAP[s.id] = s;
     s.items.forEach((it) => { it._shopId = s.id; it._shopName = s.name; it._shopEmoji = s.emoji; it._i = s.items.indexOf(it); });
   });
+  await applyShopEdits();
 }
 async function refreshRecordTotal() {
   const recs = await getRecords();
