@@ -1,7 +1,9 @@
 /* ============================================================
  * 热量手账 · 照片裁剪编辑器（快速录入）
- * 纯前端实现：拖动裁剪框（四角+四边）/ 单指移动图片 / 双指捏合缩放
- *           / 旋转90° / 重置 / 预设比例（自由·1:1·4:3·16:9）/ 完成·取消
+ * 纯前端实现：四边/四角 20pt 大触控区拖拽（1:1 跟随、边界阻尼吸附）
+ *           / 框内拖动移动选框 / 框外拖动移动图片 / 双指捏合缩放
+ *           / 旋转90° / 重置 / 预设比例（自由·1:1·4:3·3:2·16:9）
+ *           / 井字网格线 / 框外暗化 / 中心十字 / 边缘高亮 / 触觉反馈
  * 不依赖任何第三方库，输出压缩后的 dataURL，直接走现有统一渲染链路。
  * ============================================================ */
 'use strict';
@@ -10,7 +12,7 @@
  * 打开裁剪编辑器
  * @param {Object} opts
  *   src      {string}  原始图片 dataURL
- *   ratio    {string}  'free' | '1:1' | '4:3' | '16:9'
+ *   ratio    {string}  'free' | '1:1' | '4:3' | '3:2' | '16:9'
  *   onDone   {function(dataURL)} 裁剪完成后回调（已压缩的 dataURL）
  *   onCancel {function}          取消回调
  */
@@ -32,6 +34,7 @@ function openCropEditor(opts) {
       <canvas id="crop-canvas"></canvas>
       <div class="crop-box" id="crop-box">
         <div class="crop-grid"></div>
+        <span class="crop-center"></span>
         <span class="ch tl" data-h="tl"></span><span class="ch tr" data-h="tr"></span>
         <span class="ch bl" data-h="bl"></span><span class="ch br" data-h="br"></span>
         <span class="ch t" data-h="t"></span><span class="ch b" data-h="b"></span>
@@ -47,9 +50,10 @@ function openCropEditor(opts) {
         <button data-ratio="free" class="on">自由</button>
         <button data-ratio="1:1">1:1</button>
         <button data-ratio="4:3">4:3</button>
+        <button data-ratio="3:2">3:2</button>
         <button data-ratio="16:9">16:9</button>
       </div>
-      <div class="crop-hint">框选食物主体区域</div>
+      <div class="crop-hint">拖动四边/四角裁剪 · 框内移动选框 · 框外移动图片 · 双指缩放</div>
     </div>`;
   document.body.appendChild(overlay);
 
@@ -68,14 +72,18 @@ function openCropEditor(opts) {
   let bx = 0, by = 0, bw = 0, bh = 0;           // 裁剪框（舞台坐标 px）
   let raf = 0;
   const pointers = new Map();
-  let mode = '';                                // 'pan' | 'resize' | 'pinch'
+  let mode = '';                                // 'pan' | 'resize' | 'pinch' | 'box-move'
   let stageRect = null;
-  let rs = null;                                // resize 基线
+  let rs = null;                                // resize / pan / box-move 基线
   let pz = null;                                // pinch 基线
+  const TOUCH = 20;                             // 边缘触控外延（px）
+  let clampFlash = 0;                           // 边界红色提示 timer
+  const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms || 10); } catch (_) {} };
 
   function ratioVal() {
     if (ratio === '1:1') return 1;
     if (ratio === '4:3') return 4 / 3;
+    if (ratio === '3:2') return 3 / 2;
     if (ratio === '16:9') return 16 / 9;
     return 0;
   }
@@ -140,12 +148,43 @@ function openCropEditor(opts) {
     draw();
   }
 
+  /* ---------- 几何辅助：边缘命中 / 框内判定 ---------- */
+  function edgeHit(x, y) {
+    // 返回命中的手柄（含外延 TOUCH 容错），无则 ''
+    const l = x >= bx - TOUCH && x <= bx + TOUCH;
+    const r = x >= bx + bw - TOUCH && x <= bx + bw + TOUCH;
+    const t = y >= by - TOUCH && y <= by + TOUCH;
+    const b = y >= by + bh - TOUCH && y <= by + bh + TOUCH;
+    if (!(l || r || t || b)) return '';
+    if (t && l) return 'tl';
+    if (t && r) return 'tr';
+    if (b && l) return 'bl';
+    if (b && r) return 'br';
+    if (t) return 't';
+    if (b) return 'b';
+    if (l) return 'l';
+    if (r) return 'r';
+    return '';
+  }
+  function insideBox(x, y) { return x >= bx && x <= bx + bw && y >= by && y <= by + bh; }
+
+  /* ---------- 边界反馈：红色提示 + 震动 ---------- */
+  function flashClamp() {
+    if (clampFlash) clearTimeout(clampFlash);
+    box.classList.add('clamp');
+    buzz(22);
+    clampFlash = setTimeout(() => box.classList.remove('clamp'), 220);
+  }
+
   /* ---------- 事件 ---------- */
   function bind() {
     stage.addEventListener('pointerdown', onDown);
     stage.addEventListener('pointermove', onMove);
     stage.addEventListener('pointerup', onUp);
     stage.addEventListener('pointercancel', onUp);
+    // 悬停：靠近边缘高亮 + 光标反馈（未按下的鼠标移动）
+    stage.addEventListener('pointermove', onHover);
+    stage.addEventListener('pointerleave', clearHover);
     overlay.querySelectorAll('[data-crop]').forEach((b) => {
       b.addEventListener('click', () => {
         const a = b.dataset.crop;
@@ -165,29 +204,61 @@ function openCropEditor(opts) {
     });
   }
 
+  function setActiveHandles(h) {
+    box.querySelectorAll('.ch').forEach((x) => x.classList.toggle('active', h.indexOf(x.dataset.h) >= 0));
+  }
+
+  function onHover(e) {
+    if (pointers.size > 0) return;
+    const sRect = stage.getBoundingClientRect();
+    const sx = e.clientX - sRect.left, sy = e.clientY - sRect.top;
+    const h = edgeHit(sx, sy);
+    const inBox = insideBox(sx, sy);
+    if (h) {
+      box.classList.add('edge-near');
+      stage.style.cursor = h.length === 2 ? 'nwse-resize' : (h === 't' || h === 'b' ? 'ns-resize' : 'ew-resize');
+    } else {
+      box.classList.remove('edge-near');
+      stage.style.cursor = inBox ? 'move' : 'default';
+    }
+  }
+  function clearHover() {
+    box.classList.remove('edge-near');
+    stage.style.cursor = '';
+  }
+
   function onDown(e) {
     e.preventDefault();
     stage.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    const handle = e.target.closest('.ch');
-    if (handle && pointers.size === 1) {
-      mode = 'resize';
-      rs = { h: handle.dataset.h, bx: bx, by: by, bw: bw, bh: bh, px: e.clientX, py: e.clientY };
-    } else if (pointers.size === 2) {
+    const sRect = stage.getBoundingClientRect();
+    const sx = e.clientX - sRect.left, sy = e.clientY - sRect.top;
+    if (pointers.size === 2) {
       mode = 'pinch';
       const pts = [...pointers.values()];
       const m = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
-      const sRect = stage.getBoundingClientRect();
       const ms = { x: m.x - sRect.left, y: m.y - sRect.top };
       pz = {
         dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
         scale0: scale, tx0: tx, ty0: ty,
         p0: invMap(ms, scale, tx, ty, rot)
       };
+      rs = null;
+      return;
+    }
+    // 单指：近边缘 → 缩放；框内 → 移动选框；框外 → 移动图片
+    const h = edgeHit(sx, sy);
+    if (h) {
+      mode = 'resize';
+      box.classList.add('resizing');
+      setActiveHandles(h);
+      rs = { h: h, bx: bx, by: by, bw: bw, bh: bh, px: e.clientX, py: e.clientY };
+      buzz(10);
+    } else if (insideBox(sx, sy)) {
+      mode = 'box-move';
+      rs = { bx0: bx, by0: by, px: e.clientX, py: e.clientY };
     } else {
       mode = 'pan';
-      rs = null;
-      pz = null;
       rs = { panTx: tx, panTy: ty, px: e.clientX, py: e.clientY };
     }
   }
@@ -200,6 +271,12 @@ function openCropEditor(opts) {
     if (mode === 'resize' && rs) {
       const dx = e.clientX - rs.px, dy = e.clientY - rs.py;
       resizeBox(rs.h, dx, dy);
+      positionBox();
+    } else if (mode === 'box-move' && rs) {
+      const nx = rs.bx0 + (e.clientX - rs.px);
+      const ny = rs.by0 + (e.clientY - rs.py);
+      bx = Math.max(0, Math.min(SW - bw, nx));
+      by = Math.max(0, Math.min(SH - bh, ny));
       positionBox();
     } else if (mode === 'pinch' && pointers.size >= 2) {
       const pts = [...pointers.values()];
@@ -228,6 +305,10 @@ function openCropEditor(opts) {
       pz = null;
     } else if (pointers.size === 0) {
       mode = ''; rs = null; pz = null;
+      box.classList.remove('resizing', 'edge-near');
+      setActiveHandles('');
+      clearHover();
+      buzz(10);
     }
   }
 
@@ -274,12 +355,14 @@ function openCropEditor(opts) {
       const anchorTop = handle.indexOf('t') >= 0 ? (by + bh) : y1;
       x1 = anchorLeft - nw; y1 = anchorTop - nh; x2 = anchorLeft; y2 = anchorTop;
     }
-    // 限制在舞台内
-    if (x1 < 0) { x2 -= x1; x1 = 0; }
-    if (y1 < 0) { y2 -= y1; y1 = 0; }
-    if (x2 > SW) { x1 -= (x2 - SW); x2 = SW; }
-    if (y2 > SH) { y1 -= (y2 - SH); y2 = SH; }
+    // 限制在舞台内（吸附边界；触到边界给红色反馈）
+    let over = 0;
+    if (x1 < 0) { over += -x1; x2 -= x1; x1 = 0; }
+    if (y1 < 0) { over += -y1; y2 -= y1; y1 = 0; }
+    if (x2 > SW) { over += x2 - SW; x1 -= (x2 - SW); x2 = SW; }
+    if (y2 > SH) { over += y2 - SH; y1 -= (y2 - SH); y2 = SH; }
     bx = x1; by = y1; bw = Math.max(MIN, x2 - x1); bh = Math.max(MIN, y2 - y1);
+    if (over > 0.5) flashClamp();
   }
 
   /* ---------- 输出 ---------- */
