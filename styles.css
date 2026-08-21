@@ -869,3 +869,32 @@ img { display: block; }
 .emoji-opt { width: 38px; height: 38px; border-radius: 12px; background: rgba(0,0,0,.05); border: 0; font-size: 20px; cursor: pointer; transition: transform .15s; }
 .emoji-opt:active { transform: scale(.9); }
 .emoji-opt.on { background: var(--orange); box-shadow: 0 3px 10px rgba(255,149,0,.35); }
+
+/* ---------- 快速录入：照片裁剪编辑器 ---------- */
+.crop-overlay { position: fixed; inset: 0; z-index: 2000; background: #000; display: flex; flex-direction: column; animation: fadeIn .2s; }
+.crop-top { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; padding-top: calc(14px + env(safe-area-inset-top)); color: #fff; }
+.crop-title { font-size: 16px; font-weight: 800; }
+.crop-x, .crop-done { background: none; border: 0; color: #fff; font-size: 15px; font-weight: 700; padding: 6px 4px; cursor: pointer; }
+.crop-done { color: #34C759; font-weight: 800; }
+.crop-stage { position: relative; flex: 1; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+#crop-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.crop-box { position: absolute; box-sizing: border-box; border: 1.5px solid rgba(255,255,255,.95); box-shadow: 0 0 0 9999px rgba(0,0,0,.55); cursor: move; }
+.crop-grid { position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(rgba(255,255,255,.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.4) 1px, transparent 1px); background-size: 33.33% 33.33%; background-position: center; }
+.ch { position: absolute; width: 22px; height: 22px; background: #fff; border-radius: 50%; border: 2px solid var(--brand, #5E5CE6); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.ch.tl { left: -11px; top: -11px; cursor: nwse-resize; }
+.ch.tr { right: -11px; top: -11px; cursor: nesw-resize; }
+.ch.bl { left: -11px; bottom: -11px; cursor: nesw-resize; }
+.ch.br { right: -11px; bottom: -11px; cursor: nwse-resize; }
+.ch.t { left: 50%; top: -11px; margin-left: -13px; cursor: ns-resize; width: 26px; border-radius: 6px; }
+.ch.b { left: 50%; bottom: -11px; margin-left: -13px; cursor: ns-resize; width: 26px; border-radius: 6px; }
+.ch.l { top: 50%; left: -11px; margin-top: -13px; cursor: ew-resize; height: 26px; border-radius: 6px; }
+.ch.r { top: 50%; right: -11px; margin-top: -13px; cursor: ew-resize; height: 26px; border-radius: 6px; }
+.crop-bottom { padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); color: #fff; }
+.crop-tools { display: flex; gap: 12px; justify-content: center; margin-bottom: 12px; }
+.crop-tools button, .crop-ratios button { background: rgba(255,255,255,.14); border: 0; color: #fff; font-size: 14px; font-weight: 700; padding: 10px 16px; border-radius: 12px; cursor: pointer; }
+.crop-ratios { display: flex; gap: 8px; justify-content: center; }
+.crop-ratios button.on { background: var(--brand, #5E5CE6); }
+.crop-hint { text-align: center; font-size: 12px; color: rgba(255,255,255,.6); margin-top: 10px; }
+/* 照片占位区上的「重新裁剪」小药丸 */
+.photo-pick .pp-crop { position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); z-index: 3; background: rgba(0,0,0,.6); color: #fff; font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; pointer-events: auto; cursor: pointer; white-space: nowrap; }
+.photo-pick .pp-crop:active { background: rgba(0,0,0,.8); }
