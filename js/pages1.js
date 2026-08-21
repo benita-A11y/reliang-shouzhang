@@ -903,34 +903,65 @@ function openManualForm(existing, compare) {
   window._formUpdateCal = false;
   window._formCompare = compare;
   window._formCompareId = existing ? existing.id : null;
+  window._cropOriginal = f.photo || ''; // 编辑已有食物时，以当前图作为「重新裁剪」的源
 }
 registerAction('rec:manual', () => openManualForm());
 registerAction('form:photo', () => {
   // 需求三-第一步：点击照片占位区 → 弹出「拍照 / 从相册选择 / 取消」底部菜单
   // 用 modal 承载菜单（不覆盖表单 sheet），取消/点背景不会丢失已输入内容
+  const has = !!window._formPhoto;
+  let menu = '';
+  if (has) menu += '<button class="btn block" style="margin-bottom:10px" data-action="form:photo-recrop">✂️ 重新裁剪</button>';
+  menu += '<button class="btn block" style="margin-bottom:10px" data-action="form:photo-camera">📷 拍照</button>';
+  menu += '<button class="btn block" style="margin-bottom:10px" data-action="form:photo-album">🖼️ 从相册选择</button>';
+  if (has) menu += '<button class="btn ghost block" style="margin-bottom:10px" data-action="form:photo-clear2">🗑️ 删除照片</button>';
   $('#modal-root').innerHTML = `
     <div class="modal-back" data-action="modal:close"></div>
     <div class="photo-menu">
-      <div class="photo-menu-title">📷 添加食物照片</div>
-      <button class="btn block" style="margin-bottom:10px" data-action="form:photo-camera">📷 拍照</button>
-      <button class="btn block" style="margin-bottom:10px" data-action="form:photo-album">🖼️ 从相册选择</button>
+      <div class="photo-menu-title">📷 ${has ? '修改食物照片' : '添加食物照片'}</div>
+      ${menu}
       <button class="btn ghost block" data-action="modal:close">取消</button>
     </div>`;
 });
 registerAction('form:photo-camera', () => {
   closeModal();
-  pickPhoto((d) => applyFormPhoto(d), true); // capture 拍照
+  pickThenCrop(true);
 });
 registerAction('form:photo-album', () => {
   closeModal();
-  pickPhoto((d) => applyFormPhoto(d)); // 系统相册
+  pickThenCrop(false);
 });
-async function applyFormPhoto(dataURL) {
-  // 需求 4.1：压缩至 480px/0.7 小图后存入；直接更新照片占位区，保留表单其他输入
-  window._formPhoto = await compressImage(dataURL, 480, 0.7);
+registerAction('form:photo-recrop', () => {
+  closeModal();
+  const src = window._cropOriginal || window._formPhoto;
+  if (!src) return;
+  openCropEditor({ src, onDone: (c) => setFormPhoto(c, false), onCancel: () => {} });
+});
+registerAction('form:photo-clear2', () => {
+  closeModal();
+  window._formPhoto = '';
+  window._cropOriginal = '';
   const pick = $('#sheet-root .photo-pick');
-  if (pick) pick.innerHTML = `<img src="${window._formPhoto}"><div class="pp-x" data-action="form:photo-clear">✕</div>`;
+  if (pick) pick.innerHTML = '<span>＋</span><span>拍照 / 相册</span>';
+  toast('已删除照片', 'brand');
+});
+/* 选图 → 裁剪 → 落库：保留原图以便「重新裁剪」，裁剪后输出直接作为食物照片 */
+function pickThenCrop(capture) {
+  pickAlbumImages((imgs) => {
+    if (!imgs[0]) return;
+    window._cropOriginal = imgs[0];
+    openCropEditor({ src: imgs[0], onDone: (c) => setFormPhoto(c, false), onCancel: () => {} });
+  }, { capture, maxCount: 1, compress: 1280 });
+}
+async function setFormPhoto(dataURL, compress) {
+  // 直接显示裁剪后的图（压缩由裁剪编辑器完成）；compress=true 时再压一次（兼容旧路径）
+  window._formPhoto = compress ? await compressImage(dataURL, 480, 0.7) : dataURL;
+  const pick = $('#sheet-root .photo-pick');
+  if (pick) pick.innerHTML = `<img src="${window._formPhoto}"><div class="pp-x" data-action="form:photo-clear">✕</div><div class="pp-crop" data-action="form:photo-recrop">✂️ 重新裁剪</div>`;
   toast('照片已添加，可直接保存 📷', 'green');
+}
+async function applyFormPhoto(dataURL) {
+  await setFormPhoto(dataURL, true);
 }
 registerAction('form:photo-clear', () => {
   window._formPhoto = '';
