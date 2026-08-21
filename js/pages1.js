@@ -32,7 +32,6 @@ registerPage('home', async function (root) {
     : '与上次持平';
 
   await loadFoods();                                   // 保证食谱数量/最近添加准确
-  const recent = await getRecentSix();
   const groups = { breakfast: [], lunch: [], dinner: [], snack: [] };
   stats.records.forEach((r) => { if (groups[r.meal]) groups[r.meal].push(r); });
   const needCount = Math.max(0, 5 - FOODS.length);
@@ -71,25 +70,7 @@ registerPage('home', async function (root) {
           </div>`).join('')}
       </div>
     </div>
-    <!-- ③ 今天吃什么？转盘入口 -->
-    <div class="card home-wheel" data-action="nav:go" data-page="wheel">
-      <span class="hw-emoji">🎯</span>
-      <span class="hw-text"><b>今天吃什么？</b><small>让转盘决定！</small></span>
-      <span class="hw-arrow">→</span>
-    </div>
-    <!-- ④ 快速记录：核心动作 -->
-    <div class="section-title">⚡ 快速记录 <span class="small muted" style="font-weight:500">点一下，3秒完成</span></div>
-    <div class="card" style="padding:14px 16px">
-      <div class="quick-row">
-        ${recent.length ? recent.map((f, i) => `
-          <div class="quick-item" data-action="quick:record" data-i="${i}">
-            <div class="quick-photo">${f.photo ? `<img src="${f.photo}">` : `<span>${foodEmoji(f)}</span>`}</div>
-            <div class="q-name">${esc(f.name)}</div>
-            <div class="q-ago">${f.ago === '—' ? '食谱库' : '上次吃：' + f.ago}</div>
-          </div>`).join('') : `<div class="muted small" style="padding:18px">还没吃过东西，去「记录」添加第一样吧</div>`}
-      </div>
-    </div>
-    <!-- ⑤ 今日已吃三餐汇总 -->
+    <!-- ④ 今日已吃三餐汇总 -->
     <div class="section-title">📋 今日已吃 <span class="small muted" style="font-weight:500">共 ${stats.count} 样 · ${stats.kcal}kcal</span></div>
     <div class="card" style="padding:16px">
       ${MEALS.map((m) => `
@@ -109,7 +90,7 @@ registerPage('home', async function (root) {
         </div>`).join('')}
       <div class="view-full" data-action="nav:go" data-page="board">查看完整记录 →</div>
     </div>
-    <!-- ⑥ 辅助功能：饮水 / 运动 / 体重 -->
+    <!-- ⑤ 辅助功能：饮水 / 运动 / 体重 -->
     <div class="section-title">🧰 生活小记</div>
     <div class="stats-grid">
       <div class="card stat-card">
@@ -144,7 +125,7 @@ registerPage('home', async function (root) {
       </div>
       <button class="btn sm" data-action="nav:go" data-page="recipes">去建库</button>
     </div>` : ''}
-    <!-- ⑦ 食谱库入口 -->
+    <!-- ⑥ 食谱库入口 -->
     <div class="card home-recipes" data-action="nav:go" data-page="recipes">
       <div class="hr-head">
         <span class="hr-emoji">📖</span><b>食谱库</b>
