@@ -837,3 +837,35 @@ img { display: block; }
   .stat-row { grid-template-columns: 1fr; }
   .three-cards { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+ * 今天吃什么 · 大转盘
+ * ============================================================ */
+.wheel-bar { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 12px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.wheel-bar::-webkit-scrollbar { display: none; }
+.wheel-bar .chip { flex-shrink: 0; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: pan-y; }
+.wheel-bar .chip.dragging { opacity: .85; box-shadow: 0 8px 18px rgba(0,0,0,.18); transform: translateX(0) !important; transition: none; }
+.wheel-bar .chip.wheel-add { background: transparent; border: 1.5px dashed var(--orange); color: var(--orange); box-shadow: none; }
+.wheel-stage { display: flex; flex-direction: column; align-items: center; padding: 10px 0 20px; position: relative; }
+.wheel-pointer { font-size: 30px; color: var(--orange); line-height: 1; margin-bottom: -6px; z-index: 3; filter: drop-shadow(0 2px 4px rgba(255,149,0,.45)); }
+.wheel-disc { width: 300px; height: 300px; position: relative; will-change: transform; }
+.wheel-disc canvas { width: 300px; height: 300px; border-radius: 50%; box-shadow: 0 12px 36px rgba(0,0,0,.16); background: #fff; display: block; }
+.wheel-spin-btn { margin-top: 18px; min-width: 210px; border-radius: 999px; font-size: 17px; padding: 14px; background: linear-gradient(135deg, #FFB800, #FF9500); box-shadow: 0 8px 22px rgba(255,149,0,.35); }
+.wheel-spin-btn:disabled { opacity: .55; }
+.wheel-tip { margin-top: 10px; }
+.wheel-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.wheel-card-title { font-size: 14px; font-weight: 800; }
+.wheel-card-title b { color: var(--orange); }
+.wheel-food-list { border-radius: 14px; overflow: hidden; margin-bottom: 12px; }
+.wheel-food { display: flex; align-items: center; gap: 10px; padding: 12px 6px; border-bottom: 1px solid rgba(0,0,0,.05); }
+.wheel-food:last-child { border-bottom: 0; }
+.wf-emoji { font-size: 22px; width: 32px; text-align: center; flex-shrink: 0; }
+.wf-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-btn { width: 34px; height: 34px; border-radius: 12px; background: rgba(0,0,0,.05); border: 0; font-size: 15px; cursor: pointer; flex-shrink: 0; transition: transform .15s; }
+.wf-btn:active { transform: scale(.92); }
+.wf-btn.wf-del { color: var(--red); }
+.wheel-add-food-btn { border-style: dashed; color: var(--orange); }
+.emoji-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.emoji-opt { width: 38px; height: 38px; border-radius: 12px; background: rgba(0,0,0,.05); border: 0; font-size: 20px; cursor: pointer; transition: transform .15s; }
+.emoji-opt:active { transform: scale(.9); }
+.emoji-opt.on { background: var(--orange); box-shadow: 0 3px 10px rgba(255,149,0,.35); }
