@@ -6,7 +6,7 @@
 'use strict';
 
 const DB_NAME = 'reliang-shouzhang';
-const DB_VER = 3;   // v3: 新增 wheels（今天吃什么大转盘）表
+const DB_VER = 4;   // v4: 新增 edits（店铺/单品用户编辑覆盖）
 
 const IDB = {
   foods: 'foods',
@@ -17,7 +17,8 @@ const IDB = {
   contribs: 'contribs',
   exercises: 'exercises',
   weights: 'weights',
-  wheels: 'wheels'
+  wheels: 'wheels',
+  edits: 'edits'
 };
 
 let _db = null;
@@ -60,6 +61,10 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains(IDB.wheels)) {
         db.createObjectStore(IDB.wheels, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(IDB.edits)) {
+        const s = db.createObjectStore(IDB.edits, { keyPath: 'ek' });
+        s.createIndex('shopId', 'shopId');
       }
     };
     req.onsuccess = () => { _db = req.result; resolve(_db); };
