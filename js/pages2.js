@@ -326,6 +326,7 @@ function openBillFlow(item, shop) {
   BILL.item = item; BILL.shop = shop; BILL.isDrink = isDrink;
   BILL.sweetness = '5分糖'; BILL.temp = '冰'; BILL.size = '中杯'; BILL.toppings = [];
   BILL.portion = '中份'; BILL.spice = '微辣';
+  openSheet(''); // 先打开弹层（replaceSheet 只替换内容，不会弹出）
   renderSpecSheet();
 }
 function computeBill() {
