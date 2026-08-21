@@ -6,7 +6,7 @@
 'use strict';
 
 const DB_NAME = 'reliang-shouzhang';
-const DB_VER = 2;   // v2: 新增 exercises（运动）、weights（体重）表
+const DB_VER = 3;   // v3: 新增 wheels（今天吃什么大转盘）表
 
 const IDB = {
   foods: 'foods',
@@ -16,7 +16,8 @@ const IDB = {
   profile: 'profile',
   contribs: 'contribs',
   exercises: 'exercises',
-  weights: 'weights'
+  weights: 'weights',
+  wheels: 'wheels'
 };
 
 let _db = null;
@@ -56,6 +57,9 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains(IDB.weights)) {
         const s = db.createObjectStore(IDB.weights, { keyPath: 'date' });
+      }
+      if (!db.objectStoreNames.contains(IDB.wheels)) {
+        db.createObjectStore(IDB.wheels, { keyPath: 'id' });
       }
     };
     req.onsuccess = () => { _db = req.result; resolve(_db); };
@@ -356,6 +360,51 @@ async function addWeight(date, kg) {
 }
 async function delWeight(date) { await dbDel(IDB.weights, date); }
 
+/* ---------- 今天吃什么 · 大转盘（纯本地，独立于热量/账单） ---------- */
+const DEFAULT_WHEEL = {
+  id: 'main',
+  places: [
+    { id: 'w-foodcourt', name: '食堂', foods: [
+      { id: 'w-f1', name: '麻辣烫', emoji: '🍲' },
+      { id: 'w-f2', name: '黄焖鸡米饭', emoji: '🍛' },
+      { id: 'w-f3', name: '沙县小吃', emoji: '🥟' },
+      { id: 'w-f4', name: '煲仔饭', emoji: '🍚' }
+    ] },
+    { id: 'w-mall', name: '商场', foods: [
+      { id: 'w-f5', name: '烤肉', emoji: '🍖' },
+      { id: 'w-f6', name: '日料', emoji: '🍣' },
+      { id: 'w-f7', name: '火锅', emoji: '🍲' },
+      { id: 'w-f8', name: '西餐', emoji: '🍝' }
+    ] },
+    { id: 'w-snack', name: '小吃街', foods: [
+      { id: 'w-f9', name: '烤冷面', emoji: '🥘' },
+      { id: 'w-f10', name: '章鱼小丸子', emoji: '🐙' },
+      { id: 'w-f11', name: '炸串', emoji: '🍢' },
+      { id: 'w-f12', name: '鸡蛋灌饼', emoji: '🫓' }
+    ] },
+    { id: 'w-rest', name: '餐厅', foods: [
+      { id: 'w-f13', name: '粤菜', emoji: '🥘' },
+      { id: 'w-f14', name: '川菜', emoji: '🌶️' },
+      { id: 'w-f15', name: '家常菜', emoji: '🍳' },
+      { id: 'w-f16', name: '东北菜', emoji: '🍖' }
+    ] }
+  ]
+};
+/* 读取大转盘数据；无数据时写入默认预设并返回 */
+async function getWheelData() {
+  const d = await dbGet(IDB.wheels, 'main');
+  if (d) return d;
+  const seed = JSON.parse(JSON.stringify(DEFAULT_WHEEL));
+  await dbPut(IDB.wheels, seed);
+  return seed;
+}
+/* 保存整个大转盘数据（地方分类 + 各自食物列表） */
+async function saveWheelData(data) {
+  await dbPut(IDB.wheels, data);
+  return data;
+}
+
+
 /* ---------- 连续打卡（连续记录天数，含今天） ---------- */
 async function getStreak() {
   const recs = await getRecords();
@@ -435,14 +484,14 @@ function displayKcalRange(kcal, recordTotal) {
 
 /* ---------- 导出 ---------- */
 async function exportAllData() {
-  const [foods, records, orders, days, profile, contribs, exercises, weights] = await Promise.all([
+  const [foods, records, orders, days, profile, contribs, exercises, weights, wheels] = await Promise.all([
     dbGetAll(IDB.foods), dbGetAll(IDB.records), dbGetAll(IDB.orders),
     dbGetAll(IDB.days), dbGet(IDB.profile, 'main'), dbGetAll(IDB.contribs),
-    dbGetAll(IDB.exercises), dbGetAll(IDB.weights)
+    dbGetAll(IDB.exercises), dbGetAll(IDB.weights), dbGetAll(IDB.wheels)
   ]);
   return {
     app: '热量手账', version: '1.1.0', exportedAt: nowISO(),
-    profile, foods, records, orders, days, contribs, exercises, weights
+    profile, foods, records, orders, days, contribs, exercises, weights, wheels
   };
 }
 function downloadJSON(data, filename) {
