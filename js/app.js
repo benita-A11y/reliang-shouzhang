@@ -136,6 +136,9 @@ function closeSheet() {
 }
 function replaceSheet(html) {
   $('#sheet-root').innerHTML = `<div class="sheet-handle"></div>${html}`;
+  // 保证替换内容时弹层一定处于可见状态（配送动画/结果页等场景）
+  $('#sheet-mask').classList.add('show');
+  $('#sheet-root').classList.add('show');
   $('#sheet-root').scrollTop = 0;
 }
 function openModal(html) {
