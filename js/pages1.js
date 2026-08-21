@@ -31,11 +31,13 @@ registerPage('home', async function (root) {
     : weightDiff < 0 ? `较上次 ↓ ${Math.abs(weightDiff)}kg`
     : '与上次持平';
 
+  await loadFoods();                                   // 保证食谱数量/最近添加准确
   const recent = await getRecentSix();
   const groups = { breakfast: [], lunch: [], dinner: [], snack: [] };
   stats.records.forEach((r) => { if (groups[r.meal]) groups[r.meal].push(r); });
   const needCount = Math.max(0, 5 - FOODS.length);
-  const C = 2 * Math.PI * 88;
+  const recentAdded = [...FOODS].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).slice(0, 3);
+  const C = 2 * Math.PI * 100;
 
   root.innerHTML = `
     <div class="page-head">
@@ -45,6 +47,70 @@ registerPage('home', async function (root) {
       </div>
       <button class="btn sm primary" data-action="nav:go" data-page="record">＋ 记录</button>
     </div>
+    <!-- ① 核心：今日剩余热量大圆环 -->
+    <div class="card" style="text-align:center">
+      <div class="ring-wrap lg">
+        <svg width="240" height="240" viewBox="0 0 240 240">
+          <circle cx="120" cy="120" r="100" fill="none" stroke="#E9E9EC" stroke-width="17"/>
+          <circle cx="120" cy="120" r="100" fill="none" stroke="${ringColor}" stroke-width="17" stroke-linecap="round"
+            stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" style="transition:stroke-dashoffset .8s cubic-bezier(.25,.8,.35,1),stroke .4s"/>
+        </svg>
+        <div class="ring-center">
+          <div class="rc-num">${remaining.toLocaleString()} <small style="font-size:15px;color:var(--sub)">kcal</small></div>
+          <div class="rc-label">今日剩余热量</div>
+          <div class="rc-extra" style="color:${ringColor}">目标 ${target}kcal${burned ? ' · 运动 +' + burned : ''} · 已吃 ${stats.kcal}kcal</div>
+        </div>
+      </div>
+      <!-- ② 三大营养素：紧跟剩余热量 -->
+      <div style="margin-top:18px">
+        ${[['protein', '蛋白质', '#007AFF', stats.protein, mt.protein], ['carbs', '碳水', '#FF9500', stats.carbs, mt.carbs], ['fat', '脂肪', '#AF52DE', stats.fat, mt.fat]].map(([k, label, color, val, tgt]) => `
+          <div class="macro-row">
+            <div class="macro-label"><span class="macro-dot" style="background:${color}"></span>${label}</div>
+            <div class="macro-track"><div class="macro-fill" style="width:${Math.min(100, (val / tgt) * 100)}%;background:${color}"></div></div>
+            <div class="macro-val"><b>${val}</b>/${tgt}g</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <!-- ③ 今天吃什么？转盘入口 -->
+    <div class="card home-wheel" data-action="nav:go" data-page="wheel">
+      <span class="hw-emoji">🎯</span>
+      <span class="hw-text"><b>今天吃什么？</b><small>让转盘决定！</small></span>
+      <span class="hw-arrow">→</span>
+    </div>
+    <!-- ④ 快速记录：核心动作 -->
+    <div class="section-title">⚡ 快速记录 <span class="small muted" style="font-weight:500">点一下，3秒完成</span></div>
+    <div class="card" style="padding:14px 16px">
+      <div class="quick-row">
+        ${recent.length ? recent.map((f, i) => `
+          <div class="quick-item" data-action="quick:record" data-i="${i}">
+            <div class="quick-photo">${f.photo ? `<img src="${f.photo}">` : `<span>${foodEmoji(f)}</span>`}</div>
+            <div class="q-name">${esc(f.name)}</div>
+            <div class="q-ago">${f.ago === '—' ? '食谱库' : '上次吃：' + f.ago}</div>
+          </div>`).join('') : `<div class="muted small" style="padding:18px">还没吃过东西，去「记录」添加第一样吧</div>`}
+      </div>
+    </div>
+    <!-- ⑤ 今日已吃三餐汇总 -->
+    <div class="section-title">📋 今日已吃 <span class="small muted" style="font-weight:500">共 ${stats.count} 样 · ${stats.kcal}kcal</span></div>
+    <div class="card" style="padding:16px">
+      ${MEALS.map((m) => `
+        <div class="meal-block">
+          <div class="meal-head">
+            <span class="meal-emoji">${m.emoji}</span><span class="meal-name">${m.label}</span>
+            <span class="meal-kcal"><b>${groups[m.k].reduce((a, r) => a + r.kcal, 0)}</b> kcal</span>
+          </div>
+          ${groups[m.k].length ? groups[m.k].map((r) => `
+            <div class="food-line">
+              <div class="fl-photo">${photoHTML(r)}</div>
+              <div class="fl-info"><div class="fl-name">${esc(r.foodName)}</div>
+                <div class="fl-meta">${esc(r.portion || '')}${r.shop ? ' · ' + esc(r.shop) : ''}</div></div>
+              <div class="fl-kcal">${r.kcal}kcal</div>
+              <div class="fl-del" data-action="rec:del" data-id="${r.id}">✕</div>
+            </div>`).join('') : `<div class="muted small" style="padding:6px 2px 10px">${m.k === 'breakfast' ? '记得吃早餐哦' : '可以去「觅食」看看吃什么'}</div>`}
+        </div>`).join('')}
+      <div class="view-full" data-action="nav:go" data-page="board">查看完整记录 →</div>
+    </div>
+    <!-- ⑥ 辅助功能：饮水 / 运动 / 体重 -->
+    <div class="section-title">🧰 生活小记</div>
     <div class="stats-grid">
       <div class="card stat-card">
         <div class="sc-top">
@@ -78,57 +144,16 @@ registerPage('home', async function (root) {
       </div>
       <button class="btn sm" data-action="nav:go" data-page="recipes">去建库</button>
     </div>` : ''}
-    <div class="card" style="text-align:center">
-      <div class="ring-wrap">
-        <svg width="216" height="216" viewBox="0 0 216 216">
-          <circle cx="108" cy="108" r="88" fill="none" stroke="#E9E9EC" stroke-width="16"/>
-          <circle cx="108" cy="108" r="88" fill="none" stroke="${ringColor}" stroke-width="16" stroke-linecap="round"
-            stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" style="transition:stroke-dashoffset .8s cubic-bezier(.25,.8,.35,1),stroke .4s"/>
-        </svg>
-        <div class="ring-center">
-          <div class="rc-num">${remaining.toLocaleString()} <small style="font-size:14px;color:var(--sub)">kcal</small></div>
-          <div class="rc-label">今日剩余热量</div>
-          <div class="rc-extra" style="color:${ringColor}">目标 ${target}kcal${burned ? ' · 运动 +' + burned : ''} · 已吃 ${stats.kcal}kcal</div>
-        </div>
+    <!-- ⑦ 食谱库入口 -->
+    <div class="card home-recipes" data-action="nav:go" data-page="recipes">
+      <div class="hr-head">
+        <span class="hr-emoji">📖</span><b>食谱库</b>
+        <span class="hr-count">共 ${FOODS.length} 样食物</span>
+        <span class="hr-arrow">→</span>
       </div>
-      <div style="margin-top:18px">
-        ${[['protein', '蛋白质', '#007AFF', stats.protein, mt.protein], ['carbs', '碳水', '#FF9500', stats.carbs, mt.carbs], ['fat', '脂肪', '#AF52DE', stats.fat, mt.fat]].map(([k, label, color, val, tgt]) => `
-          <div class="macro-row">
-            <div class="macro-label"><span class="macro-dot" style="background:${color}"></span>${label}</div>
-            <div class="macro-track"><div class="macro-fill" style="width:${Math.min(100, (val / tgt) * 100)}%;background:${color}"></div></div>
-            <div class="macro-val"><b>${val}</b>/${tgt}g</div>
-          </div>`).join('')}
-      </div>
+      <div class="hr-sub">最近添加：${recentAdded.length ? recentAdded.map((f) => esc(f.name)).join('、') : '还没有添加，去「我的食谱」建库'}</div>
     </div>
-    <div class="section-title">⚡ 快速记录 <span class="small muted" style="font-weight:500">点一下，3秒完成</span></div>
-    <div class="card" style="padding:14px 16px">
-      <div class="quick-row">
-        ${recent.length ? recent.map((f, i) => `
-          <div class="quick-item" data-action="quick:record" data-i="${i}">
-            <div class="quick-photo">${f.photo ? `<img src="${f.photo}">` : `<span>${foodEmoji(f)}</span>`}</div>
-            <div class="q-name">${esc(f.name)}</div>
-            <div class="q-ago">${f.ago === '—' ? '食谱库' : '上次吃：' + f.ago}</div>
-          </div>`).join('') : `<div class="muted small" style="padding:18px">还没吃过东西，去「记录」添加第一样吧</div>`}
-      </div>
-    </div>
-    <div class="section-title">📋 今日已吃 <span class="small muted" style="font-weight:500">共 ${stats.count} 样 · ${stats.kcal}kcal</span></div>
-    <div class="card" style="padding:16px">
-      ${MEALS.map((m) => `
-        <div class="meal-block">
-          <div class="meal-head">
-            <span class="meal-emoji">${m.emoji}</span><span class="meal-name">${m.label}</span>
-            <span class="meal-kcal"><b>${groups[m.k].reduce((a, r) => a + r.kcal, 0)}</b> kcal</span>
-          </div>
-          ${groups[m.k].length ? groups[m.k].map((r) => `
-            <div class="food-line">
-              <div class="fl-photo">${photoHTML(r)}</div>
-              <div class="fl-info"><div class="fl-name">${esc(r.foodName)}</div>
-                <div class="fl-meta">${esc(r.portion || '')}${r.shop ? ' · ' + esc(r.shop) : ''}</div></div>
-              <div class="fl-kcal">${r.kcal}kcal</div>
-              <div class="fl-del" data-action="rec:del" data-id="${r.id}">✕</div>
-            </div>`).join('') : `<div class="muted small" style="padding:6px 2px 10px">${m.k === 'breakfast' ? '记得吃早餐哦' : '可以去「觅食」看看吃什么'}</div>`}
-        </div>`).join('')}
-    </div>`;
+    <div style="height:12px"></div>`;
 });
 
 async function getRecentSix() {
