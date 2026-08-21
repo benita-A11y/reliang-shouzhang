@@ -30,12 +30,6 @@ registerPage('hunt', async function (root) {
       <div class="muted small" style="margin-top:10px">根据今日已摄入，你还有这些额度可以自由支配</div>
     </div>
     ${HUNT.tab !== 'fav' ? `
-    <div class="brand-scroll">
-      ${BRANDS.map((b) => `<div class="brand-pill" data-action="hunt:brand" data-id="${b.id}">
-        <div class="brand-logo" style="--nc-soft:${hexA(b.color || '#5E5CE6', 0.14)}">${b.emoji}</div>
-        <div class="brand-name">${esc(b.name)}</div>
-      </div>`).join('')}
-    </div>
     <div class="chips cat-scroll">
       ${[['全部', '🍽️'], ...FOOD_CATEGORIES.map((c) => [c.name, c.emoji])].map(([k, e]) => `<button class="chip ${HUNT.cat === k ? 'on' : ''}" data-action="hunt:cat" data-v="${k}">${e} ${k}</button>`).join('')}
     </div>` : ''}
@@ -170,10 +164,11 @@ registerPage('shop', async function (root) {
     <div class="shop-detail-head">
       <button class="shop-back" data-action="shop:back">←</button>
       <div class="shop-detail-title">${esc(shop.name)}</div>
-      <button class="shop-fav" data-action="shop:fav" data-id="${shop.id}">⭐ 收藏</button>
+      <button class="shop-edit" data-action="shop:edit" data-id="${shop.id}">✏️</button>
+      <button class="shop-fav" data-action="shop:fav" data-id="${shop.id}">⭐</button>
     </div>
     <div class="shop-hero">
-      <div class="shop-hero-logo" style="--nc-soft:${hexA(shop.color || '#5E5CE6', 0.14)}">${shop.emoji}</div>
+      <div class="shop-hero-logo" style="--nc-soft:${hexA(shop.color || '#5E5CE6', 0.14)}">${shop.image ? `<img src="${shop.image}" alt="">` : shop.emoji}</div>
       <div class="shop-hero-info">
         <div class="shop-hero-name">${esc(shop.name)}</div>
         <div class="shop-hero-meta">⭐ <b>${hot.rating}</b> · ${esc(hot.sales)} · ${catLabel}</div>
@@ -184,16 +179,30 @@ registerPage('shop', async function (root) {
       ${seriesList.map((s) => `<div class="series-tab ${SHOP_VIEW.series === s ? 'on' : ''}" data-action="shop:series" data-v="${s}">${s}</div>`).join('')}
     </div>
     <div class="menu-list">
-      ${items.map((it) => `
+      ${items.filter((it) => it.status !== '下架').map((it) => `
         <div class="menu-item" data-action="shop:item" data-i="${it._i}">
-          <div class="mi-photo" style="--nc-soft:${hexA(shop.color || '#5E5CE6', 0.12)}">${shop.emoji}</div>
+          <div class="mi-photo" style="--nc-soft:${hexA(shop.color || '#5E5CE6', 0.12)}">${it.image ? `<img src="${it.image}" alt="">` : shop.emoji}</div>
           <div class="mi-info">
-            <div class="mi-name">${esc(it.name)}</div>
+            <div class="mi-name">${esc(it.name)}${it._edited ? '<span class="edited-tag">已编辑</span>' : ''}</div>
             <div class="mi-meta">¥${it.price.toFixed(2)} · ${it.kcal}kcal · ${esc(it.series || guessSeries(it.name))}</div>
           </div>
-          <button class="point-it" data-action="shop:item" data-i="${it._i}">点它</button>
+          <div class="mi-right">
+            <button class="mi-more" data-action="item:menu" data-i="${it._i}">⋯</button>
+            <button class="point-it" data-action="shop:item" data-i="${it._i}">点它</button>
+          </div>
         </div>`).join('')}
     </div>
+    ${items.some((it) => it.status === '下架') ? `
+    <div class="section-title" style="margin-top:18px">⤵️ 已下架（${items.filter((it) => it.status === '下架').length}）</div>
+    <div class="menu-list">
+      ${items.filter((it) => it.status === '下架').map((it) => `
+        <div class="menu-item down" data-action="item:menu" data-i="${it._i}">
+          <div class="mi-photo" style="--nc-soft:rgba(0,0,0,.06)">${it.image ? `<img src="${it.image}" alt="">` : shop.emoji}</div>
+          <div class="mi-info"><div class="mi-name">${esc(it.name)}</div><div class="mi-meta">¥${it.price.toFixed(2)} · ${it.kcal}kcal · 已下架</div></div>
+          <button class="mi-more" data-action="item:menu" data-i="${it._i}">⋯</button>
+        </div>`).join('')}
+    </div>` : ''}
+    <button class="btn block add-item-btn" data-action="shop:add">➕ 添加新品</button>
     <div class="section-title" style="margin-top:18px">🔥 为你推荐 <span class="small muted" style="font-weight:500">本店其他热销</span></div>
     <div class="rec-row">
       ${shop.items.map((it) => `
@@ -321,17 +330,19 @@ function openBillFlow(item, shop) {
 }
 function computeBill() {
   const it = BILL.item;
+  const S = itemSpecs(it);
   if (BILL.isDrink) {
-    const s = DRINK_SPECS.sweetness.find((x) => x.label === BILL.sweetness);
-    const z = DRINK_SPECS.sizes.find((x) => x.label === BILL.size);
+    const s = (S.sweetness || DRINK_SPECS.sweetness).find((x) => x.label === BILL.sweetness) || { deltaKcal: 0, deltaPrice: 0 };
+    const z = (S.sizes || DRINK_SPECS.sizes).find((x) => x.label === BILL.size) || { coef: 1, priceCoef: 1 };
     let topK = 0, topP = 0;
-    BILL.toppings.forEach((t) => { const tp = DRINK_SPECS.toppings.find((x) => x.name === t); if (tp) { topK += tp.kcal; topP += tp.price; } });
+    const tops = S.toppings || DRINK_SPECS.toppings;
+    BILL.toppings.forEach((t) => { const tp = tops.find((x) => x.name === t); if (tp) { topK += tp.kcal; topP += tp.price; } });
     const kcal = Math.round((it.kcal + s.deltaKcal) * z.coef + topK);
     const price = Math.round(((it.price + s.deltaPrice) * z.priceCoef + topP) * 100) / 100;
     return { kcal, price, specs: `${BILL.size}/${BILL.sweetness}/${BILL.temp}${BILL.toppings.length ? '/+' + BILL.toppings.join('+') : ''}` };
   }
-  const p = FOOD_SPECS.portions.find((x) => x.label === BILL.portion);
-  const sp = FOOD_SPECS.spices.find((x) => x.label === BILL.spice);
+  const p = (S.portions || FOOD_SPECS.portions).find((x) => x.label === BILL.portion) || { coef: 1, priceCoef: 1 };
+  const sp = (S.spices || FOOD_SPECS.spices).find((x) => x.label === BILL.spice) || { deltaKcal: 0 };
   const kcal = Math.round(it.kcal * p.coef + sp.deltaKcal);
   const price = Math.round(it.price * p.priceCoef * 100) / 100;
   return { kcal, price, specs: `${BILL.portion}/${BILL.spice}` };
@@ -340,6 +351,7 @@ function renderSpecSheet() {
   const it = BILL.item;
   const total = computeBill();
   const isDrink = BILL.isDrink;
+  const S = itemSpecs(it);
   const base = isDrink ? `${it.price.toFixed(2)} · 基础 ${it.kcal}kcal` : `${it.price.toFixed(2)} · 基础 ${it.kcal}kcal`;
   replaceSheet(`
     <button class="sheet-close" data-action="sheet:close">✕</button>
@@ -348,27 +360,27 @@ function renderSpecSheet() {
     ${isDrink ? `
     <div class="spec-group">
       <div class="spec-title">甜度 <span class="delta">每档约差15-20kcal</span></div>
-      <div class="chips">${DRINK_SPECS.sweetness.map((s) => `<button class="chip ${BILL.sweetness === s.label ? 'on' : ''}" data-action="spec:choose" data-g="sweetness" data-v="${s.label}">${s.label}${s.deltaKcal ? ` (${s.deltaKcal > 0 ? '+' : ''}${s.deltaKcal})` : ''}</button>`).join('')}</div>
+      <div class="chips">${S.sweetness.map((s) => `<button class="chip ${BILL.sweetness === s.label ? 'on' : ''}" data-action="spec:choose" data-g="sweetness" data-v="${s.label}">${s.label}${s.deltaKcal ? ` (${s.deltaKcal > 0 ? '+' : ''}${s.deltaKcal})` : ''}</button>`).join('')}</div>
     </div>
     <div class="spec-group">
       <div class="spec-title">温度</div>
-      <div class="chips">${DRINK_SPECS.temperature.map((t) => `<button class="chip ${BILL.temp === t.label ? 'on' : ''}" data-action="spec:choose" data-g="temp" data-v="${t.label}">${t.label}</button>`).join('')}</div>
+      <div class="chips">${S.temperature.map((t) => `<button class="chip ${BILL.temp === t.label ? 'on' : ''}" data-action="spec:choose" data-g="temp" data-v="${t.label}">${t.label}</button>`).join('')}</div>
     </div>
     <div class="spec-group">
       <div class="spec-title">容量 <span class="delta">大杯约×1.2</span></div>
-      <div class="chips">${DRINK_SPECS.sizes.map((s) => `<button class="chip ${BILL.size === s.label ? 'on' : ''}" data-action="spec:choose" data-g="size" data-v="${s.label}">${s.label}</button>`).join('')}</div>
+      <div class="chips">${S.sizes.map((s) => `<button class="chip ${BILL.size === s.label ? 'on' : ''}" data-action="spec:choose" data-g="size" data-v="${s.label}">${s.label}</button>`).join('')}</div>
     </div>
     <div class="spec-group">
       <div class="spec-title">小料 <span class="delta">可多选</span></div>
-      <div class="chips">${DRINK_SPECS.toppings.map((t) => `<button class="chip ${BILL.toppings.includes(t.name) ? 'on' : ''}" data-action="spec:topping" data-v="${t.name}">${t.name} +${t.kcal}kcal / +¥${t.price}</button>`).join('')}</div>
+      <div class="chips">${S.toppings.map((t) => `<button class="chip ${BILL.toppings.includes(t.name) ? 'on' : ''}" data-action="spec:topping" data-v="${t.name}">${t.name} +${t.kcal}kcal / +¥${t.price}</button>`).join('')}</div>
     </div>` : `
     <div class="spec-group">
       <div class="spec-title">分量</div>
-      <div class="chips">${FOOD_SPECS.portions.map((p) => `<button class="chip ${BILL.portion === p.label ? 'on' : ''}" data-action="spec:choose" data-g="portion" data-v="${p.label}">${p.label}</button>`).join('')}</div>
+      <div class="chips">${S.portions.map((p) => `<button class="chip ${BILL.portion === p.label ? 'on' : ''}" data-action="spec:choose" data-g="portion" data-v="${p.label}">${p.label}</button>`).join('')}</div>
     </div>
     <div class="spec-group">
       <div class="spec-title">口味</div>
-      <div class="chips">${FOOD_SPECS.spices.map((s) => `<button class="chip ${BILL.spice === s.label ? 'on' : ''}" data-action="spec:choose" data-g="spice" data-v="${s.label}">${s.label}</button>`).join('')}</div>
+      <div class="chips">${S.spices.map((s) => `<button class="chip ${BILL.spice === s.label ? 'on' : ''}" data-action="spec:choose" data-g="spice" data-v="${s.label}">${s.label}</button>`).join('')}</div>
     </div>`}
     <div class="spec-summary">已选规格：${esc(total.specs)}</div>
     <div class="spec-panel" style="background:rgba(0,0,0,0.04)">
@@ -455,7 +467,7 @@ registerAction('bill:do', async () => {
   await upsertShopFood(BILL.item.name, total.kcal, total.price, BILL.shop.name, BILL.shop.id);
   await learnTasteSignal('spec:confirm', billFlavor());
   confetti();
-  renderBillResult(order);
+  renderDelivery(order);
 });
 function renderBillResult(order) {
   const hours = jogHours(order.savedKcal);
@@ -481,4 +493,38 @@ registerAction('bill:again', () => {
 registerAction('bill:view', () => {
   closeSheet();
   switchPage('bill');
+});
+
+/* ============================================================
+ * 配送动画（确认下单 → 三段简笔画自动切换 → 结果页）
+ * ============================================================ */
+let _deliTimer = null, _deliOrder = null;
+function renderDelivery(order) {
+  _deliOrder = order;
+  if (_deliTimer) clearTimeout(_deliTimer);
+  const stages = [
+    { emoji: '📦', t: '骑手已取餐', sub: '商家出餐完毕，骑手到店取走你的订单' },
+    { emoji: '🛵', t: '配送中', sub: '骑手正在飞奔向你……' },
+    { emoji: '🍽️', t: '已送达！', sub: '（空盘子）这单你成功躲过，热量和钱都省下啦' }
+  ];
+  let idx = 0;
+  const draw = () => replaceSheet(`
+    <div class="delivery" data-action="delivery:skip">
+      <div class="deli-emoji">${stages[idx].emoji}</div>
+      <div class="deli-title">${stages[idx].t}</div>
+      <div class="deli-sub">${stages[idx].sub}</div>
+      <div class="deli-dots">${stages.map((s, i) => `<span class="deli-dot ${i === idx ? 'on' : ''}"></span>`).join('')}</div>
+      <div class="deli-tip">点击任意处跳过动画 →</div>
+    </div>`);
+  draw();
+  const advance = () => {
+    idx++;
+    if (idx < stages.length) { draw(); _deliTimer = setTimeout(advance, 3000); }
+    else { _deliTimer = setTimeout(() => renderBillResult(order), 3000); }
+  };
+  _deliTimer = setTimeout(advance, 3000);
+}
+registerAction('delivery:skip', () => {
+  if (_deliTimer) clearTimeout(_deliTimer);
+  if (_deliOrder) renderBillResult(_deliOrder);
 });
