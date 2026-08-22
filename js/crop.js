@@ -35,6 +35,7 @@ function openCropEditor(opts) {
       <div class="crop-box" id="crop-box">
         <div class="crop-grid"></div>
         <span class="crop-center"></span>
+        <span class="crop-size"></span>
         <span class="ch tl" data-h="tl"></span><span class="ch tr" data-h="tr"></span>
         <span class="ch bl" data-h="bl"></span><span class="ch br" data-h="br"></span>
         <span class="ch t" data-h="t"></span><span class="ch b" data-h="b"></span>
@@ -76,7 +77,7 @@ function openCropEditor(opts) {
   let stageRect = null;
   let rs = null;                                // resize / pan / box-move 基线
   let pz = null;                                // pinch 基线
-  const TOUCH = 20;                             // 边缘触控外延（px）
+  const TOUCH = 22;                             // 边缘触控外延（px），角点热区直径 ≈ 2*1.4*TOUCH ≥ 44pt
   let clampFlash = 0;                           // 边界红色提示 timer
   const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms || 10); } catch (_) {} };
 
@@ -115,6 +116,8 @@ function openCropEditor(opts) {
     box.style.top = by + 'px';
     box.style.width = bw + 'px';
     box.style.height = bh + 'px';
+    const sz = box.querySelector('.crop-size');
+    if (sz) sz.textContent = Math.round(bw) + ' × ' + Math.round(bh);
   }
   function reset() {
     scale = fitScale() * 0.92;
@@ -148,22 +151,29 @@ function openCropEditor(opts) {
     draw();
   }
 
-  /* ---------- 几何辅助：边缘命中 / 框内判定 ---------- */
+  /* ---------- 几何辅助：分层触控（角点圆形热区 / 边缘中段 / 框内） ---------- */
+  // 关键修复：角点只在「离角点的圆形热区」内才触发双向缩放，避免沿边拖拽时误触角落（四角过于灵敏）。
   function edgeHit(x, y) {
-    // 返回命中的手柄（含外延 TOUCH 容错），无则 ''
-    const l = x >= bx - TOUCH && x <= bx + TOUCH;
-    const r = x >= bx + bw - TOUCH && x <= bx + bw + TOUCH;
-    const t = y >= by - TOUCH && y <= by + TOUCH;
-    const b = y >= by + bh - TOUCH && y <= by + bh + TOUCH;
-    if (!(l || r || t || b)) return '';
-    if (t && l) return 'tl';
-    if (t && r) return 'tr';
-    if (b && l) return 'bl';
-    if (b && r) return 'br';
-    if (t) return 't';
-    if (b) return 'b';
-    if (l) return 'l';
-    if (r) return 'r';
+    const corners = [
+      { h: 'tl', cx: bx, cy: by },
+      { h: 'tr', cx: bx + bw, cy: by },
+      { h: 'bl', cx: bx, cy: by + bh },
+      { h: 'br', cx: bx + bw, cy: by + bh },
+    ];
+    let best = '', bestD = Infinity;
+    for (const c of corners) {
+      const d = Math.hypot(x - c.cx, y - c.cy);
+      if (d < bestD) { bestD = d; best = c.h; }
+    }
+    if (bestD <= TOUCH * 1.4) return best;     // 角点：圆形热区（直径≈2*1.4*TOUCH ≥ 44pt）
+    // 边缘：仅命中边中段（排除角点区域），单向缩放
+    const dT = y - by, dB = (by + bh) - y, dL = x - bx, dR = (bx + bw) - x;
+    const midX = x > bx + TOUCH * 1.4 && x < bx + bw - TOUCH * 1.4;
+    const midY = y > by + TOUCH * 1.4 && y < by + bh - TOUCH * 1.4;
+    if (dT >= 0 && dT <= TOUCH && midX) return 't';
+    if (dB >= 0 && dB <= TOUCH && midX) return 'b';
+    if (dL >= 0 && dL <= TOUCH && midY) return 'l';
+    if (dR >= 0 && dR <= TOUCH && midY) return 'r';
     return '';
   }
   function insideBox(x, y) { return x >= bx && x <= bx + bw && y >= by && y <= by + bh; }
