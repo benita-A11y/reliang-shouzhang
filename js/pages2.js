@@ -21,28 +21,36 @@ registerPage('hunt', async function (root) {
         <div class="page-sub">今天吃什么？先看看额度</div>
       </div>
     </div>
-    <div class="card" style="padding:18px">
-      <div class="flex-between">
-        <div class="num-big">${remaining}<small> kcal</small></div>
-        <div class="muted small" style="text-align:right">目标 ${target}kcal<br>已吃 ${stats.kcal}kcal</div>
-      </div>
-      <div class="grad-bar" style="margin-top:12px"><div class="marker" style="left:${Math.min(100, ratio * 100)}%"></div><div class="mask" style="width:${Math.min(100, ratio * 100)}%"></div></div>
+    <div class="card hunt-top" style="padding:18px;text-align:center">
+      <div class="hunt-remain">${remaining}<small> kcal</small></div>
+      <div class="hunt-remain-sub">目标 ${target}kcal · 已吃 ${stats.kcal}kcal</div>
+      <div class="grad-bar" style="margin-top:14px"><div class="marker" style="left:${Math.min(100, ratio * 100)}%"></div><div class="mask" style="width:${Math.min(100, ratio * 100)}%"></div></div>
       <div class="muted small" style="margin-top:10px">根据今日已摄入，你还有这些额度可以自由支配</div>
     </div>
     ${HUNT.tab !== 'fav' ? `
-    <div class="chips cat-scroll">
-      ${[['全部', '🍽️'], ...FOOD_CATEGORIES.map((c) => [c.name, c.emoji])].map(([k, e]) => `<button class="chip ${HUNT.cat === k ? 'on' : ''}" data-action="hunt:cat" data-v="${k}">${e} ${k}</button>`).join('')}
+    <div class="hunt-filter">
+      <div class="filter-group">
+        <div class="filter-title">热量</div>
+        <div class="filter-opts">
+          ${['不限', '≤300', '300-500', '500-800'].map((k) => `<button class="chip ${HUNT.kcal === k ? 'on' : ''}" data-action="hunt:fk" data-v="${k}">${k === '不限' ? '不限' : k + 'kcal'}</button>`).join('')}
+        </div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-title">口味</div>
+        <div class="filter-opts">
+          ${['不限', '辣的', '咸香的', '清淡的', '甜口的'].map((k) => `<button class="chip ${HUNT.flavor === k ? 'on' : ''}" data-action="hunt:ff" data-v="${k}">${k}</button>`).join('')}
+        </div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-title">品类</div>
+        <div class="filter-opts">
+          ${['全部', '奶茶咖啡', '汉堡炸鸡', '麻辣烫', '粉面'].map((k) => `<button class="chip ${HUNT.cat === k ? 'on' : ''}" data-action="hunt:cat" data-v="${k}">${k}</button>`).join('')}
+        </div>
+      </div>
     </div>` : ''}
     <div class="tabs">
       ${[['hot', '🔥 附近热门'], ['cat', '📂 按品类找'], ['fav', '⭐ 我的收藏']].map(([k, t]) => `<div class="tab-item ${HUNT.tab === k ? 'on' : ''}" data-action="hunt:tab" data-v="${k}">${t}</div>`).join('')}
     </div>
-    ${HUNT.tab !== 'cat' ? `
-    <div class="chips" style="margin-bottom:14px">
-      <span class="muted small" style="line-height:32px;margin-right:2px">热量档位</span>
-      ${['不限', '≤300', '300-500', '500-800'].map((k) => `<button class="chip ${HUNT.kcal === k ? 'on' : ''}" data-action="hunt:fk" data-v="${k}">${k === '不限' ? '不限' : k + 'kcal'}</button>`).join('')}
-      <span class="muted small" style="line-height:32px;margin:0 2px 0 10px">口味</span>
-      ${['不限', '辣的', '咸香的', '清淡的', '甜口的'].map((k) => `<button class="chip ${HUNT.flavor === k ? 'on' : ''}" data-action="hunt:ff" data-v="${k}">${k}</button>`).join('')}
-    </div>` : ''}
     <div id="hunt-body">${await renderHuntBody()}</div>
     ${HUNT.tab !== 'fav' ? `<div id="hunt-ai"></div>` : ''}`;
   renderHuntAI();
@@ -90,13 +98,12 @@ async function renderHuntBody() {
     const catLabel = s.cat === '奶茶咖啡' ? '🧋 奶茶咖啡' : (CAT_EMOJI[s.cat] ? CAT_EMOJI[s.cat] + ' ' + s.cat : '🧋 奶茶咖啡');
     return `
     <div class="shop-card" data-action="hunt:shop" data-id="${s.id}">
-      <div class="shop-logo" style="--nc-soft:${hexA(s.color || '#5E5CE6', 0.14)}">${s.emoji}</div>
-      <div class="shop-mid">
-        <div class="shop-name">${esc(s.name)}</div>
-        <div class="shop-rating">⭐ <b>${hot.rating}</b> <span class="muted">${esc(hot.sales)}</span></div>
-        <div class="shop-cat">${catLabel} · ${s.items.length} 款单品 · 最低 <b>${minKcal}kcal</b></div>
+      <div class="sc-line1">
+        <span class="sc-brand">${esc(s.name)}</span>
+        <span class="sc-rate">⭐ ${hot.rating} · ${esc(hot.sales)}</span>
       </div>
-      <div class="shop-min"><div class="min-num">${minKcal}</div><div class="min-label">最低热量</div></div>
+      <div class="sc-line2">${catLabel} · ${s.items.length}款单品</div>
+      <div class="sc-line3">最低热量 🔥 ${minKcal} kcal</div>
     </div>`;
   }).join('');
 }
@@ -129,7 +136,7 @@ async function renderHuntAI() {
     </div>`;
 }
 registerAction('hunt:tab', (el) => { HUNT.tab = el.dataset.v; renderPage('hunt'); });
-registerAction('hunt:cat', (el) => { HUNT.cat = el.dataset.v; HUNT.tab = 'cat'; renderPage('hunt'); });
+registerAction('hunt:cat', (el) => { HUNT.cat = el.dataset.v; HUNT.tab = el.dataset.v === '全部' ? 'hot' : 'cat'; renderPage('hunt'); });
 registerAction('hunt:fk', (el) => { HUNT.kcal = el.dataset.v; renderPage('hunt'); });
 registerAction('hunt:ff', (el) => { HUNT.flavor = el.dataset.v; renderPage('hunt'); });
 registerAction('hunt:brand', (el) => { SHOP_VIEW.id = el.dataset.id; SHOP_VIEW.series = '全部'; switchPage('shop'); });
