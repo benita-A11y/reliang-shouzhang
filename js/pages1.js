@@ -132,7 +132,15 @@ registerPage('home', async function (root) {
         <span class="hr-count">共 ${FOODS.length} 样食物</span>
         <span class="hr-arrow">→</span>
       </div>
-      <div class="hr-sub">最近添加：${recentAdded.length ? recentAdded.map((f) => esc(f.name)).join('、') : '还没有添加，去「我的食谱」建库'}</div>
+      <div class="hr-recent-label">最近添加</div>
+      <div class="hr-recent">
+        ${recentAdded.length ? recentAdded.map((f) => `
+          <div class="hr-card" data-action="food:detail" data-id="${f.id}">
+            <div class="hr-thumb">${f.photo ? `<img src="${f.photo}" alt="">` : `<span class="fc-initial" style="background:${foodTint(f.name)}">${esc((f.name || '?').trim().charAt(0))}</span>`}</div>
+            <div class="hr-name">${esc(f.name)}</div>
+            <div class="hr-kcal">${dkr(f.kcal)}</div>
+          </div>`).join('') : `<div class="hr-empty">还没有添加，去「我的食谱」建库 →</div>`}
+      </div>
     </div>
     <div style="height:12px"></div>`;
 });
@@ -352,7 +360,7 @@ registerPage('record', async function (root) {
     <div class="card">
       <div class="search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="rec-search" placeholder="搜索食物库，直接记录…" autocomplete="off">
+        <input id="rec-search" placeholder="搜食物 / 品牌外卖，直接记录…" autocomplete="off">
       </div>
       <div id="rec-search-result"></div>
       <div class="divider"></div>
@@ -364,17 +372,50 @@ registerPage('record', async function (root) {
 async function renderSearchResult(q) {
   const box = $('#rec-search-result');
   if (!q.trim()) { box.innerHTML = ''; return; }
-  const list = FOODS.filter((f) => f.name.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6);
-  box.innerHTML = list.length ? list.map((f) => `
-    <div class="food-line" data-action="rec:quick" data-id="${f.id}">
-      <div class="fl-photo">${photoHTML(f)}</div>
-      <div class="fl-info"><div class="fl-name">${esc(f.name)}</div><div class="fl-meta">${dk(f.kcal)}</div></div>
-      <div class="fl-kcal" style="color:var(--brand);font-size:12px">点一下记录</div>
-    </div>`).join('') : `<div class="muted small" style="padding:10px 4px">食谱库没有「${esc(q.trim())}」…<span style="color:var(--brand);cursor:pointer" data-action="contrib:open">点我新增 →</span></div>`;
+  const ql = q.trim().toLowerCase();
+  // ① 我的食谱库
+  const lib = FOODS.filter((f) => f.name.toLowerCase().includes(ql)).slice(0, 4);
+  const libKeys = new Set(lib.map((f) => (f.name + (f.shop || '')).toLowerCase()));
+  // ② 平台品牌 / 外卖（SHOP_MAP：奶茶、麻辣烫、粉面…）
+  const plat = [];
+  for (const s of Object.values(SHOP_MAP)) {
+    if (!s.items) continue;
+    for (const it of s.items) {
+      if (it.name.toLowerCase().includes(ql)) {
+        if (libKeys.has((it.name + (s.name || '')).toLowerCase())) continue; // 已是自建，去重
+        plat.push({ s, it });
+        if (plat.length >= 6) break;
+      }
+    }
+    if (plat.length >= 6) break;
+  }
+  const has = lib.length || plat.length;
+  box.innerHTML = has ? `
+    ${lib.length ? `<div class="rs-tag">📖 我的食谱</div>` + lib.map((f) => `
+      <div class="food-line" data-action="rec:quick" data-id="${f.id}">
+        <div class="fl-photo">${photoHTML(f)}</div>
+        <div class="fl-info"><div class="fl-name">${esc(f.name)}</div><div class="fl-meta">${dk(f.kcal)} · 我的食谱</div></div>
+        <div class="fl-kcal" style="color:var(--brand);font-size:12px">记录</div>
+      </div>`).join('') : ''}
+    ${plat.length ? `<div class="rs-tag">🌐 品牌 / 外卖</div>` + plat.map(({ s, it }) => `
+      <div class="food-line" data-action="rec:shopquick" data-shopid="${s.id}" data-name="${esc(it.name)}" data-kcal="${it.kcal}" data-price="${it.price || 0}">
+        <div class="fl-photo">${s.emoji || '🍽️'}</div>
+        <div class="fl-info"><div class="fl-name">${esc(it.name)}</div><div class="fl-meta">${dk(it.kcal)} · ${esc(s.name)}</div></div>
+        <div class="fl-kcal" style="color:var(--brand);font-size:12px">记录</div>
+      </div>`).join('') : ''}
+  ` : `<div class="muted small" style="padding:10px 4px">没找到「${esc(q.trim())}」…<span style="color:var(--brand);cursor:pointer" data-action="contrib:open">点我新增 →</span></div>`;
 }
 registerAction('rec:quick', async (el) => {
   const f = FOODS.find((x) => x.id === el.dataset.id);
   if (f) askMealSheet(f);
+});
+registerAction('rec:shopquick', async (el) => {
+  const shop = SHOP_MAP[el.dataset.shopid];
+  if (!shop) return;
+  const name = el.dataset.name, kcal = Number(el.dataset.kcal), price = Number(el.dataset.price || 0);
+  const food = { id: null, name, kcal, price, shop: shop.name, category: shop.cat === '奶茶咖啡' ? '饮品' : '外卖', portion: '一份', macros: null };
+  await recordFood(food, defaultMeal());
+  await upsertShopFood(name, kcal, price, shop.name, el.dataset.shopid);
 });
 /* ---------- 拍照 / 相册 → 单张 AI 识别 ----------
  * 有密钥：真实视觉识别（名称+热量+置信度）
