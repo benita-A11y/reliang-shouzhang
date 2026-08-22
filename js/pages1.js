@@ -159,10 +159,10 @@ async function getRecentSix() {
 }
 registerAction('quick:record', async (el) => {
   const idx = Number(el.dataset.i);
-  const recent = await getRecentSix();
-  const food = recent[idx];
+  const food = (REC.recent || [])[idx];
   if (!food) return;
   await recordFood(food, defaultMeal());
+  toast('已记录 ' + food.name, 'green');
 });
 registerAction('rec:del', async (el) => {
   await delRecord(el.dataset.id);
@@ -309,7 +309,10 @@ registerAction('weight:del', async (el) => {
  * ============================================================ */
 const REC = { photo: null, candidates: [], picked: null };
 
-registerPage('record', function (root) {
+registerPage('record', async function (root) {
+  await loadFoods();
+  const recent = await getRecentSix();
+  REC.recent = recent;
   root.innerHTML = `
     <div class="page-head">
       <div>
@@ -319,6 +322,10 @@ registerPage('record', function (root) {
     </div>
     <div class="card" style="padding:18px">
       <div class="viewfinder">
+        <div class="vf-corner tl"></div>
+        <div class="vf-corner tr"></div>
+        <div class="vf-corner bl"></div>
+        <div class="vf-corner br"></div>
         <div class="vf-center">
           <div class="vf-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13.5" r="3.5"/></svg>
@@ -332,6 +339,16 @@ registerPage('record', function (root) {
       </div>
       <div class="hint" style="text-align:center;margin-top:10px">📷 单张识别 · 🖼️ 支持多选/长图批量拆解入库 · 不联网也能用</div>
     </div>
+    ${recent.length ? `
+    <div class="section-title">⚡ 经常吃 <span class="small muted" style="font-weight:500">点一下快速记录</span></div>
+    <div class="recent-strip">
+      ${recent.map((f, i) => `
+        <div class="recent-chip" data-action="quick:record" data-i="${i}">
+          <div class="rc-photo">${photoHTML(f)}</div>
+          <div class="rc-name">${esc(f.name)}</div>
+          <div class="rc-kcal">${dk(f.kcal)}</div>
+        </div>`).join('')}
+    </div>` : ''}
     <div class="card">
       <div class="search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
