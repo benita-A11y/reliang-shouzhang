@@ -8,6 +8,9 @@
  * ============================================================ */
 const HUNT = { tab: 'hot', cat: '全部', kcal: '不限', flavor: '不限' };
 const SHOP_VIEW = { id: null, series: '全部' };
+/* 店铺分类 → emoji（覆盖 BRANDS 饮品品牌与 SHOPS 各品类，避免错误套用食物分类 CAT_EMOJI） */
+const SHOP_CAT = { '奶茶咖啡': '🧋', '汉堡炸鸡': '🍔', '麻辣烫': '🌶️', '粉面': '🍜', '米饭套餐': '🍚', '轻食沙拉': '🥗', '甜品面包': '🍰', '火锅': '🍲', '烧烤': '🍢', '快餐': '🍟' };
+function shopCatLabel(cat) { return cat ? (SHOP_CAT[cat] || '🍽️') + ' ' + cat : '🧋 奶茶咖啡'; }
 
 registerPage('hunt', async function (root) {
   const stats = await getDayStats(todayKey());
@@ -95,7 +98,7 @@ async function renderHuntBody() {
   return list.map((s) => {
     const minKcal = Math.min(...s.items.map((i) => i.kcal));
     const hot = shopHotness(s.id);
-    const catLabel = s.cat === '奶茶咖啡' ? '🧋 奶茶咖啡' : (CAT_EMOJI[s.cat] ? CAT_EMOJI[s.cat] + ' ' + s.cat : '🧋 奶茶咖啡');
+    const catLabel = shopCatLabel(s.cat);
     return `
     <div class="shop-card" data-action="hunt:shop" data-id="${s.id}">
       <div class="sc-line1">
@@ -166,7 +169,7 @@ registerPage('shop', async function (root) {
   const remaining = Math.max(0, target - stats.kcal);
   const seriesList = ['全部', ...new Set(shop.items.map((it) => it.series || guessSeries(it.name)))];
   const items = SHOP_VIEW.series === '全部' ? shop.items : shop.items.filter((it) => (it.series || guessSeries(it.name)) === SHOP_VIEW.series);
-  const catLabel = shop.cat === '奶茶咖啡' ? '🧋 奶茶咖啡' : (CAT_EMOJI[shop.cat] ? CAT_EMOJI[shop.cat] + ' ' + shop.cat : '🧋 奶茶咖啡');
+  const catLabel = shopCatLabel(shop.cat);
   root.innerHTML = `
     <div class="shop-detail-head">
       <button class="shop-back" data-action="shop:back">←</button>
