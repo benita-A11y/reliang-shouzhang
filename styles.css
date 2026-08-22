@@ -278,6 +278,18 @@ img { display: block; }
 .hr-count { margin-left: auto; font-size: 11.5px; color: var(--sub); font-weight: 600; }
 .hr-arrow { font-size: 15px; color: var(--brand); font-weight: 800; }
 .hr-sub { font-size: 12px; color: var(--sub); margin-top: 6px; line-height: 1.5; }
+.hr-recent-label { font-size: 12px; color: var(--sub); font-weight: 600; margin: 14px 2px 8px; }
+.hr-recent { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.hr-card { background: #fff; border-radius: 14px; padding: 7px; box-shadow: var(--shadow-soft); display: flex; flex-direction: column; gap: 5px; cursor: pointer; transition: transform .14s ease, box-shadow .14s ease; }
+.hr-card:active { transform: scale(.97); box-shadow: 0 1px 5px rgba(0,0,0,.08); }
+.hr-thumb { width: 100%; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; background: linear-gradient(135deg, #EFEEFB, #E7E7F2); display: flex; align-items: center; justify-content: center; font-size: 30px; }
+.hr-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.hr-thumb .fc-initial { font-size: 26px; font-weight: 800; color: rgba(0,0,0,.34); }
+.hr-name { font-size: 12px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hr-kcal { font-size: 11px; color: var(--green); font-weight: 600; }
+.hr-empty { font-size: 12.5px; color: var(--sub); padding: 8px 2px; }
+.rs-tag { font-size: 11px; font-weight: 700; color: var(--sub); margin: 12px 2px 6px; letter-spacing: .3px; }
+.rs-tag:first-child { margin-top: 4px; }
 .view-full { margin-top: 12px; padding: 9px; text-align: center; font-size: 13px; font-weight: 700; color: var(--brand); background: var(--brand-soft, rgba(94,92,230,.08)); border-radius: 12px; cursor: pointer; }
 .view-full:active { opacity: .75; }
 
