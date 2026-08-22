@@ -1039,6 +1039,15 @@ registerAction('form:save', async (el) => {
 let RECIPES_FILTER = '全部';
 let RECIPES_Q = '';
 let RECIPES_SORT = 'recent';
+function catEmoji(c) {
+  const m = { '奶茶咖啡': '🧋', '汉堡炸鸡': '🍔', '火锅': '🍲', '烧烤': '🍢', '快餐': '🍟', '食堂': '🍚', '外卖': '🥡', '自制': '🏠', '面包甜点': '🍰', '零食': '🍬', '水果': '🍎', '麻辣烫': '🌶️', '粉面': '🍜' };
+  return m[c] || '🍽️';
+}
+function foodTint(name) {
+  let h = 0;
+  for (const ch of (name || 'x')) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `linear-gradient(135deg, hsl(${h} 68% 92%), hsl(${(h + 38) % 360} 62% 87%))`;
+}
 registerPage('recipes', async function (root) {
   await loadFoods();
   const filter = RECIPES_FILTER;
@@ -1078,14 +1087,14 @@ registerPage('recipes', async function (root) {
         return `
         <div class="food-card" data-action="food:detail" data-id="${f.id}">
           ${hasNew ? '<div class="badge-new">📢 有更新</div>' : isNewToday ? '<div class="badge-new" style="background:var(--green-soft);color:var(--green)">新</div>' : ''}
-          <div class="fc-edit" data-action="food:edit" data-id="${f.id}">···</div>
-          <div class="fc-photo">${photoHTML(f, true)}</div>
+          <div class="fc-photo">${f.photo ? `<img src="${f.photo}" alt="">` : `<span class="fc-initial" style="background:${foodTint(f.name)}">${esc((f.name || '?').trim().charAt(0))}</span>`}</div>
           <div class="fc-body">
-            <div class="fc-name">${esc(f.name)} <span class="cat-tag">${f.category || ''}</span></div>
+            <div class="fc-name">${esc(f.name)}</div>
             <div class="fc-kcal">${dkr(f.kcal)}</div>
-            <div class="fc-meta">${f.lastEatenAt ? '上次吃：' + daysAgoText(f.lastEatenAt.slice(0, 10)) : '还没吃过'}${f.price ? ' · ¥' + f.price : ''}</div>
-            <div class="fc-meta">上次更新：${(f.updatedAt || f.createdAt || '').slice(0, 10)} | 已编辑${f.editCount || 0}次</div>
+            <div class="cat-tag">${catEmoji(f.category)} ${esc(f.category || '')}</div>
+            <div class="fc-meta">${f.lastEatenAt ? '上次吃：' + daysAgoText(f.lastEatenAt.slice(0, 10)) : '📌 已录入'}</div>
           </div>
+          <button class="fc-add" data-action="food:quick" data-id="${f.id}" aria-label="快速记录">＋</button>
         </div>`;}).join('')}
     </div>` : `
     <div class="empty-state">
@@ -1182,6 +1191,7 @@ registerAction('food:quick', async (el) => {
   if (!f) return;
   closeSheet();
   await recordFood(f, defaultMeal());
+  toast('⚡ 已记录「' + f.name + '」', 'green');
 });
 registerAction('food:delete', async (el) => {
   const f = FOODS.find((x) => x.id === el.dataset.id);
