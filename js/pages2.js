@@ -101,12 +101,15 @@ async function renderHuntBody() {
     const catLabel = shopCatLabel(s.cat);
     return `
     <div class="shop-card" data-action="hunt:shop" data-id="${s.id}">
-      <div class="sc-line1">
-        <span class="sc-brand">${esc(s.name)}</span>
-        <span class="sc-rate">⭐ ${hot.rating} · ${esc(hot.sales)}</span>
+      <div class="sc-icon">${s.image ? `<img src="${s.image}" alt="">` : '🏪'}</div>
+      <div class="sc-body">
+        <div class="sc-line1">
+          <span class="sc-brand">${esc(s.name)}</span>
+          <span class="sc-rate">⭐ ${hot.rating} · ${esc(hot.sales)}</span>
+        </div>
+        <div class="sc-line2">${catLabel} · ${s.items.length}款单品</div>
+        <div class="sc-line3">最低热量 🔥 ${minKcal} kcal</div>
       </div>
-      <div class="sc-line2">${catLabel} · ${s.items.length}款单品</div>
-      <div class="sc-line3">最低热量 🔥 ${minKcal} kcal</div>
     </div>`;
   }).join('');
 }
@@ -159,6 +162,22 @@ registerAction('hunt:ai-item', async (el) => {
 /* ============================================================
  * 店铺详情页（美团/饿了么风格）
  * ============================================================ */
+/* 我的食谱 ↔ 觅食 数据闭环：展示用户自建且归属本品牌/店铺的食物 */
+async function shopUserFoodsHTML(shop) {
+  await loadFoods();
+  const mine = FOODS.filter((f) => (f.shop && f.shop === shop.name) || (f.brand && f.brand === shop.name));
+  if (!mine.length) return '';
+  return `
+    <div class="section-title" style="margin-top:18px">📖 我记录的（${mine.length}）<span class="small muted" style="font-weight:500">与觅食打通</span></div>
+    <div class="menu-list">
+      ${mine.map((f) => `
+        <div class="menu-item" data-action="hunt:fv" data-id="${f.id}">
+          <div class="mi-photo">${photoHTML(f)}</div>
+          <div class="mi-info"><div class="mi-name">${esc(f.name)}</div><div class="mi-meta">${f.kcal}kcal${f.series ? ' · ' + esc(f.series) : ''} · 我的食谱</div></div>
+          <div class="mi-right"><button class="point-it" data-action="hunt:fv" data-id="${f.id}">记一下</button></div>
+        </div>`).join('')}
+    </div>`;
+}
 registerPage('shop', async function (root) {
   const shop = SHOP_MAP[SHOP_VIEW.id];
   if (!shop) { switchPage('hunt'); return; }
@@ -212,6 +231,7 @@ registerPage('shop', async function (root) {
           <button class="mi-more" data-action="item:menu" data-i="${it._i}">⋯</button>
         </div>`).join('')}
     </div>` : ''}
+    ${await shopUserFoodsHTML(shop)}
     <button class="btn block add-item-btn" data-action="shop:add">➕ 添加新品</button>
     <div class="section-title" style="margin-top:18px">🔥 为你推荐 <span class="small muted" style="font-weight:500">本店其他热销</span></div>
     <div class="rec-row">
@@ -331,13 +351,24 @@ function renderOrderGroups(orders) {
         <div class="order-save">-${o.savedKcal}kcal<br>${o.priceSource === 'none' ? '未定价' : '-¥' + o.savedPrice.toFixed(2)}</div>
       </div>`).join('')}`).join('');
 }
-function openBillFlow(item, shop) {
+async function openBillFlow(item, shop) {
   const isDrink = shop.cat === '奶茶咖啡' || !!BRANDS.find((b) => b.id === shop.id);
   BILL.item = item; BILL.shop = shop; BILL.isDrink = isDrink;
   BILL.sweetness = '5分糖'; BILL.temp = '冰'; BILL.size = '中杯'; BILL.toppings = [];
   BILL.portion = '中份'; BILL.spice = '微辣';
+  // 累积合并：读取该单品的历史常选规格，预填（取最近一次）
+  const mem = await loadSpecMem(shop.id, item.name);
+  if (mem) {
+    if (mem.sweetness) BILL.sweetness = mem.sweetness;
+    if (mem.temp) BILL.temp = mem.temp;
+    if (mem.size) BILL.size = mem.size;
+    if (mem.toppings && mem.toppings.length) BILL.toppings = mem.toppings.slice();
+    if (mem.portion) BILL.portion = mem.portion;
+    if (mem.spice) BILL.spice = mem.spice;
+    BILL._mem = true;
+  } else { BILL._mem = false; }
   openSheet(''); // 先打开弹层（replaceSheet 只替换内容，不会弹出）
-  renderSpecSheet();
+  renderSpecSheet(true);
 }
 function computeBill() {
   const it = BILL.item;
@@ -358,7 +389,7 @@ function computeBill() {
   const price = Math.round(it.price * p.priceCoef * 100) / 100;
   return { kcal, price, specs: `${BILL.portion}/${BILL.spice}` };
 }
-function renderSpecSheet() {
+function renderSpecSheet(showMem) {
   const it = BILL.item;
   const total = computeBill();
   const isDrink = BILL.isDrink;
@@ -368,6 +399,7 @@ function renderSpecSheet() {
     <button class="sheet-close" data-action="sheet:close">✕</button>
     <div class="sheet-title">${BILL.shop.emoji} ${esc(it.name)}</div>
     <div class="muted small" style="text-align:center;margin-bottom:14px">基础价 ¥${base.split(' · ')[0]} · 基础热量 ${it.kcal}kcal</div>
+    ${showMem && BILL._mem ? `<div class="hint" style="margin-bottom:12px">🕘 已按你上次的选择预填，可随时改</div>` : ''}
     ${isDrink ? `
     <div class="spec-group">
       <div class="spec-title">甜度 <span class="delta">每档约差15-20kcal</span></div>
@@ -413,6 +445,7 @@ registerAction('spec:record', async () => {
   const total = computeBill();
   const shop = BILL.shop;
   const isDrink = BILL.isDrink;
+  await saveSpecMem({ shopId: shop.id, name: BILL.item.name, sweetness: BILL.sweetness, temp: BILL.temp, size: BILL.size, toppings: BILL.toppings.slice(), portion: BILL.portion, spice: BILL.spice });
   closeSheet();
   await recordFood({
     id: null, name: BILL.item.name, kcal: total.kcal, price: total.price,
@@ -433,13 +466,13 @@ registerAction('spec:choose', (el) => {
   if (g === 'sweetness' || g === 'temp' || g === 'size') BILL[g] = v;
   if (g === 'portion') BILL.portion = v;
   if (g === 'spice') BILL.spice = v;
-  renderSpecSheet();
+  renderSpecSheet(false);
 });
 registerAction('spec:topping', (el) => {
   const v = el.dataset.v;
   if (BILL.toppings.includes(v)) BILL.toppings = BILL.toppings.filter((t) => t !== v);
   else BILL.toppings.push(v);
-  renderSpecSheet();
+  renderSpecSheet(false);
 });
 async function getRealPrice(item, shop) {
   // 省下金额 = 现实价格：用户食谱价 > 平台预置价 > 未定价
@@ -469,6 +502,7 @@ registerAction('bill:do', async () => {
   closeModal();
   const total = computeBill();
   const real = await getRealPrice(BILL.item, BILL.shop);
+  await saveSpecMem({ shopId: BILL.shop.id, name: BILL.item.name, sweetness: BILL.sweetness, temp: BILL.temp, size: BILL.size, toppings: BILL.toppings.slice(), portion: BILL.portion, spice: BILL.spice });
   const order = {
     itemName: BILL.item.name, shopName: BILL.shop.name, shopEmoji: BILL.shop.emoji,
     specs: total.specs, totalKcal: total.kcal, totalPrice: total.price,
