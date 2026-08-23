@@ -70,6 +70,7 @@ async function init() {
   await buildShopMap();
   renderNav();
   bindGlobalEvents();
+  blockNativeGestures();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
@@ -393,6 +394,25 @@ function bindGlobalEvents() {
     if (fn) { e.preventDefault(); fn(el, e); }
   });
   $('#sheet-mask').addEventListener('click', closeSheet);
+}
+/* 拦截网页默认手势，让 PWA 更像原生 App：
+ * 双击放大 / 双指缩放 / 图片长按菜单 —— 全部禁用；
+ * 但输入框内的双击选词、文字选择、长按粘贴菜单保留。 */
+function blockNativeGestures() {
+  const isEditable = (t) => !!(t && t.closest && t.closest('input, textarea, [contenteditable="true"], [contenteditable=""]'));
+  document.addEventListener('dblclick', (e) => { if (!isEditable(e.target)) e.preventDefault(); }, { passive: false });
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+  document.addEventListener('contextmenu', (e) => { if (!isEditable(e.target)) e.preventDefault(); });
+  // 关闭 iOS 长按链接/图片的呼叫与保存菜单（输入框外）
+  document.addEventListener('touchstart', (e) => {
+    if (!isEditable(e.target)) {
+      const n = e.target;
+      if (n && (n.tagName === 'A' || (n.tagName === 'IMG' && !n.closest('.ph-wrap')))) {
+        // 仅阻止图片长按菜单；链接点击仍走正常委托
+        if (n.tagName === 'IMG') e.preventDefault();
+      }
+    }
+  }, { passive: false });
 }
 registerAction('nav:go', (el) => {
   // 用户点导航时自动关闭可能挂起的引导弹窗并标记已看过
