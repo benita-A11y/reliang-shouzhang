@@ -3,6 +3,16 @@
  * ============================================================ */
 'use strict';
 
+/* 问候 Emoji（与 greeting() 文字搭配） */
+function greetEmoji() {
+  const h = new Date().getHours();
+  if (h < 6) return '🌙';
+  if (h < 11) return '🌞';
+  if (h < 14) return '🍱';
+  if (h < 18) return '☕';
+  return '🌆';
+}
+
 /* ============================================================
  * 首页（今日仪表盘）
  * ============================================================ */
@@ -39,15 +49,17 @@ registerPage('home', async function (root) {
   const C = 2 * Math.PI * 100;
 
   root.innerHTML = `
-    <div class="page-head">
-      <div>
-        <div class="page-title">${fmtDateCN(new Date())}</div>
-        <div class="page-sub">${esc(greeting())}${streak > 0 ? ` · 🔥 连续打卡 ${streak} 天` : ''}</div>
+    <div class="home-head">
+      <div class="hh-date">${fmtDateCN(new Date())}</div>
+      <div class="hh-greet">${greetEmoji()} ${esc(greeting())}</div>
+      <div class="hh-meta">
+        ${streak > 0 ? `🔥 连续打卡 ${streak} 天` : '✨ 今天也要好好吃饭'}
+        <span class="hh-dot">·</span>
+        <span class="hh-record" data-action="nav:go" data-page="record">📷 去记录</span>
       </div>
-      <button class="btn sm primary" data-action="nav:go" data-page="record">＋ 记录</button>
     </div>
-    <!-- ① 核心：今日剩余热量大圆环 -->
-    <div class="card" style="text-align:center">
+    <!-- ① 核心：今日剩余热量大圆环（绝对居中 · 第一视觉重心） -->
+    <div class="card home-ring">
       <div class="ring-wrap lg">
         <svg width="240" height="240" viewBox="0 0 240 240">
           <circle cx="120" cy="120" r="100" fill="none" stroke="#E9E9EC" stroke-width="17"/>
@@ -55,14 +67,14 @@ registerPage('home', async function (root) {
             stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" style="transition:stroke-dashoffset .8s cubic-bezier(.25,.8,.35,1),stroke .4s"/>
         </svg>
         <div class="ring-center">
-          <div class="rc-num">${remaining.toLocaleString()} <small style="font-size:15px;color:var(--sub)">kcal</small></div>
+          <div class="rc-num">${remaining.toLocaleString()} <small>kcal</small></div>
           <div class="rc-label">今日剩余热量</div>
-          <div class="rc-extra" style="color:${ringColor}">目标 ${target}kcal${burned ? ' · 运动 +' + burned : ''} · 已吃 ${stats.kcal}kcal</div>
         </div>
       </div>
-      <!-- ② 三大营养素：紧跟剩余热量 -->
-      <div style="margin-top:18px">
-        ${[['protein', '蛋白质', '#007AFF', stats.protein, mt.protein], ['carbs', '碳水', '#FF9500', stats.carbs, mt.carbs], ['fat', '脂肪', '#AF52DE', stats.fat, mt.fat]].map(([k, label, color, val, tgt]) => `
+      <div class="rc-foot" style="color:${ringColor}">目标 ${target}kcal · 已吃 ${stats.kcal}kcal${burned ? ' · 运动 +' + burned : ''}</div>
+      <!-- ② 三大营养素：距圆环 24pt；蛋白紫 / 碳水蓝 / 脂肪橙 -->
+      <div class="macro-box">
+        ${[['protein', '蛋白质', '#AF52DE', stats.protein, mt.protein], ['carbs', '碳水', '#007AFF', stats.carbs, mt.carbs], ['fat', '脂肪', '#FF9500', stats.fat, mt.fat]].map(([k, label, color, val, tgt]) => `
           <div class="macro-row">
             <div class="macro-label"><span class="macro-dot" style="background:${color}"></span>${label}</div>
             <div class="macro-track"><div class="macro-fill" style="width:${Math.min(100, (val / tgt) * 100)}%;background:${color}"></div></div>
@@ -71,8 +83,8 @@ registerPage('home', async function (root) {
       </div>
     </div>
     <!-- ④ 今日已吃三餐汇总 -->
-    <div class="section-title">📋 今日已吃 <span class="small muted" style="font-weight:500">共 ${stats.count} 样 · ${stats.kcal}kcal</span></div>
-    <div class="card" style="padding:16px">
+    <div class="section-title eaten-title">📋 今日已吃 <span class="small muted" style="font-weight:500">共 ${stats.count} 样 · ${stats.kcal}kcal</span></div>
+    <div class="card eaten-card">
       ${MEALS.map((m) => `
         <div class="meal-block">
           <div class="meal-head">
@@ -86,7 +98,7 @@ registerPage('home', async function (root) {
                 <div class="fl-meta">${esc(r.portion || '')}${r.shop ? ' · ' + esc(r.shop) : ''}</div></div>
               <div class="fl-kcal">${r.kcal}kcal</div>
               <div class="fl-del" data-action="rec:del" data-id="${r.id}">✕</div>
-            </div>`).join('') : `<div class="muted small" style="padding:6px 2px 10px">${m.k === 'breakfast' ? '记得吃早餐哦' : '可以去「觅食」看看吃什么'}</div>`}
+            </div>`).join('') : `<div class="muted small" style="padding:6px 2px 10px">${m.k === 'breakfast' ? '🌅 记得吃早餐哦' : '→ 去觅食看看吃什么'}</div>`}
         </div>`).join('')}
       <div class="view-full" data-action="nav:go" data-page="board">查看完整记录 →</div>
     </div>
@@ -935,10 +947,20 @@ function openManualForm(existing, compare) {
         ${f.photo ? `<img src="${f.photo}"><div class="pp-x" data-action="form:photo-clear">✕</div>` : '<span>＋</span><span>拍照 / 相册</span>'}
       </div>
     </div>
-    <div class="field"><label>食物名称 <span class="req">*</span></label><input id="f-name" type="text" placeholder="如：食堂麻辣香锅" value="${esc(f.name || '')}"></div>
+    <div class="field">
+      <label>品牌 / 店铺 <span class="muted small">选填 · 自动匹配已有</span></label>
+      <input id="f-brand" type="text" list="brand-opts" placeholder="如：蜜雪冰城 / 学校食堂" value="${esc(f.brand || f.shop || '')}" autocomplete="off">
+      <datalist id="brand-opts">${optList(brandOptions())}</datalist>
+    </div>
+    <div class="field">
+      <label>系列 / 品类 <span class="muted small">选填 · 自动匹配已有</span></label>
+      <input id="f-series" type="text" list="series-opts" placeholder="如：奶茶 / 果茶 / 主食" value="${esc(f.series || '')}" autocomplete="off">
+      <datalist id="series-opts">${optList(seriesOptions())}</datalist>
+    </div>
+    <div class="field"><label>产品名称 <span class="req">*</span></label><input id="f-name" type="text" placeholder="如：珍珠奶茶 / 食堂麻辣香锅" value="${esc(f.name || '')}"></div>
     <div class="field"><label>预估热量（kcal）<span class="req">*</span></label><input id="f-kcal" type="number" placeholder="如：580" value="${f.kcal != null ? f.kcal : ''}"></div>
     <div class="field"><label>价格（元，选填）</label><input id="f-price" type="number" step="0.1" placeholder="用于多巴胺账单省钱统计" value="${f.price != null ? f.price : ''}"></div>
-    <div class="field"><label>店铺名（选填）</label><input id="f-shop" type="text" placeholder="用于觅食页关联" value="${esc(f.shop || '')}"></div>
+    <div class="field"><label>店铺名（选填）</label><input id="f-shop" type="text" placeholder="留空则自动用品牌名关联觅食" value="${esc(f.shop || '')}"></div>
     <div class="field"><label>分量描述（选填）</label><input id="f-portion" type="text" placeholder="一碗 / 一份 / 大份 / 小份" value="${esc(f.portion || '')}"></div>
     <div class="field">
       <label>分类</label>
@@ -1061,12 +1083,25 @@ registerAction('form:save', async (el) => {
   if (!id && !window._formPhoto) { toast('新增食物请先拍张照片哦 📷', 'red'); return; }
   const now = nowISO();
   const old = id ? (FOODS.find((x) => x.id === id) || null) : null;
+  const brand = $('#f-brand').value.trim();
+  const series = $('#f-series').value.trim();
+  // 品牌匹配平台店铺 → 自动关联 shop（打通觅食），并据品类自动分类
+  let shop = $('#f-shop').value.trim();
+  const matchShop = brand ? [...BRANDS, ...SHOPS].find((s) => s.name === brand) : null;
+  if (!shop && matchShop) shop = matchShop.name;
+  // 分类：用户未改（仍是默认「食堂」）且品牌命中平台店铺时，自动归入对应大类
+  let category = window._formCat || '食堂';
+  if (category === '食堂' && matchShop) {
+    category = (matchShop.cat === '奶茶咖啡') ? '饮品' : (matchShop.cat === '火锅' || matchShop.cat === '烧烤') ? '外卖' : '外卖';
+  }
   const food = {
     id: id || uid(), name, kcal: Math.round(kcal),
     price: Number($('#f-price').value) || 0,
-    shop: $('#f-shop').value.trim(),
+    shop,
+    brand: brand || shop,        // 品牌层级优先取品牌名，无则回退店铺名
+    series,
     portion: $('#f-portion').value.trim() || '一份',
-    category: window._formCat || '食堂',
+    category,
     photo: window._formPhoto || '',
     createdAt: old ? old.createdAt : now,
     updatedAt: now,
@@ -1097,6 +1132,21 @@ registerAction('form:save', async (el) => {
 let RECIPES_FILTER = '全部';
 let RECIPES_Q = '';
 let RECIPES_SORT = 'recent';
+let RECIPES_OPEN = { brands: {}, series: {}, cats: {} };   // 品牌/系列/品类 折叠态（key→true 表示收起）
+/* 候选品牌名（食谱库已有 + 平台品牌/店铺），用于录入时自动匹配 */
+function brandOptions() {
+  const set = new Set();
+  FOODS.forEach((f) => { if (f.brand) set.add(f.brand); else if (f.shop) set.add(f.shop); });
+  [...BRANDS, ...SHOPS].forEach((s) => set.add(s.name));
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh'));
+}
+function seriesOptions() {
+  const set = new Set();
+  FOODS.forEach((f) => { if (f.series) set.add(f.series); });
+  [...BRANDS, ...SHOPS].forEach((s) => s.items.forEach((it) => { if (it.series) set.add(it.series); }));
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh'));
+}
+function optList(arr) { return arr.map((v) => `<option value="${esc(v)}">`).join(''); }
 function catEmoji(c) {
   const m = { '奶茶咖啡': '🧋', '汉堡炸鸡': '🍔', '火锅': '🍲', '烧烤': '🍢', '快餐': '🍟', '食堂': '🍚', '外卖': '🥡', '自制': '🏠', '面包甜点': '🍰', '零食': '🍬', '水果': '🍎', '麻辣烫': '🌶️', '粉面': '🍜' };
   return m[c] || '🍽️';
@@ -1106,19 +1156,122 @@ function foodTint(name) {
   for (const ch of (name || 'x')) h = (h * 31 + ch.charCodeAt(0)) % 360;
   return `linear-gradient(135deg, hsl(${h} 68% 92%), hsl(${(h + 38) % 360} 62% 87%))`;
 }
-registerPage('recipes', async function (root) {
-  await loadFoods();
-  const filter = RECIPES_FILTER;
-  const q = RECIPES_Q;
-  const sort = RECIPES_SORT;
+function recipesEmpty(searching) {
+  if (searching) return `<div class="empty-state"><div class="es-icon">🔍</div><div class="es-title">没有匹配的食物</div><div class="es-sub">换个关键词试试（品牌 / 系列 / 食物名）</div></div>`;
+  return `<div class="empty-state"><div class="es-icon">📖</div><div class="es-title">食谱库还空着</div><div class="es-sub">点击下方「添加新食物」开始建立你的专属食谱库吧</div><div style="height:16px"></div><button class="btn primary" data-action="food:add">＋ 添加新食物</button></div>`;
+}
+/* 仅渲染列表区域（品牌树 / 网格 / 空态），供初次渲染与搜索输入复用，避免整页重渲染打断中文输入法 */
+/* 食谱卡（两列网格单元），供网格与按品类分组复用 */
+function recipeCardHTML(f) {
+  const cal = PLATFORM_CALIBRATIONS[f.name];
+  const hasNew = cal && f.kcal !== cal.kcal && !f.calAdopted;
+  const isNewToday = (f.createdAt || '').slice(0, 10) === todayKey();
+  return `
+    <div class="food-card" data-action="food:detail" data-id="${f.id}">
+      ${hasNew ? '<div class="badge-new">📢 有更新</div>' : isNewToday ? '<div class="badge-new" style="background:var(--green-soft);color:var(--green)">新</div>' : ''}
+      <div class="fc-photo">${f.photo ? `<img src="${f.photo}" alt="">` : `<span class="fc-initial" style="background:${foodTint(f.name)}">${esc((f.name || '?').trim().charAt(0))}</span>`}</div>
+      <div class="fc-body">
+        <div class="fc-name">${esc(f.name)}</div>
+        <div class="fc-kcal">${dkr(f.kcal)}</div>
+        <div class="cat-tag">${catEmoji(f.category)} ${esc(f.category || '')}</div>
+        ${f.brand ? `<div class="fc-meta">${esc(f.brand)}${f.series ? ' · ' + esc(f.series) : ''}</div>` : `<div class="fc-meta">${f.lastEatenAt ? '上次吃：' + daysAgoText(f.lastEatenAt.slice(0, 10)) : '📌 已录入'}</div>`}
+      </div>
+      <button class="fc-add" data-action="food:quick" data-id="${f.id}" aria-label="快速记录">＋</button>
+    </div>`;
+}
+function renderRecipesList() {
+  const filter = RECIPES_FILTER, q = RECIPES_Q, sort = RECIPES_SORT;
+  const ql = (q || '').trim().toLowerCase();
   let list = FOODS.slice();
   if (filter !== '全部') list = list.filter((f) => f.category === filter);
-  if (q) list = list.filter((f) => f.name.toLowerCase().includes(q.toLowerCase()));
+  // 搜索优先级：品牌 > 系列 > 产品（模糊包含即可）
+  if (ql) list = list.filter((f) => {
+    const brand = (f.brand || f.shop || '').toLowerCase();
+    const series = (f.series || '').toLowerCase();
+    const name = (f.name || '').toLowerCase();
+    return brand.includes(ql) || series.includes(ql) || name.includes(ql);
+  });
   if (sort === 'kcal-asc') list.sort((a, b) => (a.kcal || 0) - (b.kcal || 0));
   else if (sort === 'kcal-desc') list.sort((a, b) => (b.kcal || 0) - (a.kcal || 0));
   else if (sort === 'name') list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh'));
   else list.sort((a, b) => ((b.lastEatenAt || b.updatedAt) || '').localeCompare((a.lastEatenAt || a.updatedAt) || ''));
 
+  const showTree = sort === 'brand' && !ql;
+  if (showTree) {
+    const groups = {};
+    list.forEach((f) => {
+      const brand = f.brand || f.shop || '未分类';
+      const series = f.series || '其他';
+      (groups[brand] = groups[brand] || {})[series] = (groups[brand][series] || []);
+      groups[brand][series].push(f);
+    });
+    const brands = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'zh'));
+    if (!brands.length) return recipesEmpty(false);
+    return '<div class="brand-tree">' + brands.map((brand) => {
+      const all = Object.values(groups[brand]).flat();
+      const bCol = RECIPES_OPEN.brands[brand] ? ' collapsed' : '';
+      const seriesKeys = Object.keys(groups[brand]).sort((a, b) => a.localeCompare(b, 'zh'));
+      return `
+      <div class="brand-group${bCol}" data-b="${esc(brand)}">
+        <div class="bg-head" data-action="bg:toggle">
+          <span class="bg-caret">${RECIPES_OPEN.brands[brand] ? '▸' : '▾'}</span>
+          <span class="bg-name">🏪 ${esc(brand)}</span>
+          <span class="bg-count">${all.length} 款产品</span>
+          <span class="bg-arrow">→</span>
+        </div>
+        ${seriesKeys.map((series) => {
+          const items = groups[brand][series];
+          const sKey = brand + '|' + series;
+          const sCol = RECIPES_OPEN.series[sKey] ? ' collapsed' : '';
+          return `
+          <div class="series-group${sCol}" data-b="${esc(brand)}" data-s="${esc(series)}">
+            <div class="sg-head" data-action="sg:toggle">
+              <span class="sg-caret">${RECIPES_OPEN.series[sKey] ? '▸' : '▾'}</span>
+              <span class="sg-name">${esc(series)}</span>
+              <span class="sg-count">${items.length} 种口味</span>
+            </div>
+            <div class="sg-body">
+              ${items.map((f) => `
+                <div class="food-line fg-item" data-action="food:detail" data-id="${f.id}">
+                  <div class="fl-photo">${photoHTML(f)}</div>
+                  <div class="fl-info"><div class="fl-name">${esc(f.name)}</div>
+                    <div class="fl-meta">${dkr(f.kcal)}${f.price ? ' · ¥' + f.price : ''}</div></div>
+                  <div class="fl-kcal" style="color:var(--brand);font-size:12px" data-action="food:quick" data-id="${f.id}">记录</div>
+                </div>`).join('')}
+            </div>
+          </div>`;}).join('')}
+      </div>`;
+    }).join('') + '</div>';
+  }
+  const showCatTree = sort === 'cat' && !ql;
+  if (showCatTree) {
+    const groups = {};
+    list.forEach((f) => { const c = f.category || '其他'; (groups[c] = groups[c] || []).push(f); });
+    const cats = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'zh'));
+    if (!cats.length) return recipesEmpty(false);
+    return '<div class="brand-tree">' + cats.map((c) => {
+      const items = groups[c];
+      const col = RECIPES_OPEN.cats[c] ? ' collapsed' : '';
+      return `
+      <div class="brand-group${col}" data-b="${esc(c)}">
+        <div class="bg-head" data-action="cat:toggle">
+          <span class="bg-caret">${RECIPES_OPEN.cats[c] ? '▸' : '▾'}</span>
+          <span class="bg-name">${catEmoji(c)} ${esc(c)}</span>
+          <span class="bg-count">${items.length} 样</span>
+          <span class="bg-arrow">→</span>
+        </div>
+        <div class="sg-body"><div class="food-grid">
+          ${items.map((f) => recipeCardHTML(f)).join('')}
+        </div></div>
+      </div>`;
+    }).join('') + '</div>';
+  }
+  if (!list.length) return recipesEmpty(!!ql);
+  return '<div class="food-grid">' + list.map((f) => recipeCardHTML(f)).join('') + '</div>';
+}
+registerPage('recipes', async function (root) {
+  await loadFoods();
+  const filter = RECIPES_FILTER, q = RECIPES_Q, sort = RECIPES_SORT;
   root.innerHTML = `
     <div class="page-head">
       <div>
@@ -1129,46 +1282,28 @@ registerPage('recipes', async function (root) {
     </div>
     <div class="search" style="margin-bottom:12px">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="recipes-search" placeholder="搜索食物…" value="${esc(q)}" autocomplete="off">
+      <input id="recipes-search" placeholder="搜品牌 / 系列 / 食物…" value="${esc(q)}" autocomplete="off">
+      ${q ? '<span class="search-clear" data-action="recipes:clear">✕</span>' : ''}
     </div>
     <div class="chips" id="recipes-chips" style="margin-bottom:10px">
       ${['全部', '食堂', '外卖', '自制', '饮品', '零食', '水果'].map((c) => `<button class="chip ${filter === c ? 'on' : ''}" data-action="recipes:cat" data-v="${c}">${c}</button>`).join('')}
     </div>
     <div class="chips" id="recipes-sort" style="margin-bottom:16px;opacity:.85">
-      ${[['recent', '⏱️ 最近食用'], ['kcal-asc', '热量低→高'], ['kcal-desc', '热量高→低'], ['name', '🔤 名称']].map(([v, t]) => `<button class="chip sm ${sort === v ? 'on' : ''}" data-action="recipes:sort" data-v="${v}">${t}</button>`).join('')}
+      ${[['recent', '⏱️ 最近食用'], ['brand', '🏷️ 按品牌'], ['cat', '🍱 按品类'], ['kcal-asc', '热量低→高'], ['kcal-desc', '热量高→低']].map(([v, t]) => `<button class="chip sm ${sort === v ? 'on' : ''}" data-action="recipes:sort" data-v="${v}">${t}</button>`).join('')}
     </div>
-    ${list.length ? `<div class="food-grid">
-      ${list.map((f) => {
-        const cal = PLATFORM_CALIBRATIONS[f.name];
-        const hasNew = cal && f.kcal !== cal.kcal && !f.calAdopted;
-        const isNewToday = (f.createdAt || '').slice(0, 10) === todayKey();
-        return `
-        <div class="food-card" data-action="food:detail" data-id="${f.id}">
-          ${hasNew ? '<div class="badge-new">📢 有更新</div>' : isNewToday ? '<div class="badge-new" style="background:var(--green-soft);color:var(--green)">新</div>' : ''}
-          <div class="fc-photo">${f.photo ? `<img src="${f.photo}" alt="">` : `<span class="fc-initial" style="background:${foodTint(f.name)}">${esc((f.name || '?').trim().charAt(0))}</span>`}</div>
-          <div class="fc-body">
-            <div class="fc-name">${esc(f.name)}</div>
-            <div class="fc-kcal">${dkr(f.kcal)}</div>
-            <div class="cat-tag">${catEmoji(f.category)} ${esc(f.category || '')}</div>
-            <div class="fc-meta">${f.lastEatenAt ? '上次吃：' + daysAgoText(f.lastEatenAt.slice(0, 10)) : '📌 已录入'}</div>
-          </div>
-          <button class="fc-add" data-action="food:quick" data-id="${f.id}" aria-label="快速记录">＋</button>
-        </div>`;}).join('')}
-    </div>` : `
-    <div class="empty-state">
-      <div class="es-icon">📖</div>
-      <div class="es-title">食谱库还空着</div>
-      <div class="es-sub">还没录入食物？点击下方「添加新食物」开始建立你的专属食谱库吧</div>
-      <div style="height:16px"></div>
-      <button class="btn primary" data-action="food:add">＋ 添加新食物</button>
-    </div>`}`;
-  $('#recipes-search').addEventListener('input', (e) => {
+    <div id="recipes-body">${renderRecipesList()}</div>`;
+  // 搜索：只更新列表区域，不重建 input（保护中文输入法组合）
+  const box = $('#recipes-search');
+  if (box) box.addEventListener('input', (e) => {
     RECIPES_Q = e.target.value;
-    renderPage('recipes');
+    const body = $('#recipes-body');
+    if (body) body.innerHTML = renderRecipesList();
+    const clr = document.querySelector('#view .search-clear');
+    if (clr) clr.style.display = e.target.value ? '' : 'none';
   });
   // 长按卡片 → 快速记录
   setTimeout(() => {
-    document.querySelectorAll('.food-card').forEach((card) => {
+    document.querySelectorAll('#recipes-body .food-card').forEach((card) => {
       bindLongPress(card, () => {
         const f = FOODS.find((x) => x.id === card.dataset.id);
         if (f) askMealSheet(f);
@@ -1183,6 +1318,42 @@ registerAction('recipes:cat', (el) => {
 registerAction('recipes:sort', (el) => {
   RECIPES_SORT = el.dataset.v;
   renderPage('recipes');
+});
+registerAction('bg:toggle', (el) => {
+  const g = el.closest('.brand-group');
+  if (!g) return;
+  const b = g.dataset.b;
+  RECIPES_OPEN.brands[b] = !RECIPES_OPEN.brands[b];
+  g.classList.toggle('collapsed', !!RECIPES_OPEN.brands[b]);
+  const caret = g.querySelector(':scope > .bg-head .bg-caret');
+  if (caret) caret.textContent = RECIPES_OPEN.brands[b] ? '▸' : '▾';
+});
+registerAction('sg:toggle', (el) => {
+  const g = el.closest('.series-group');
+  if (!g) return;
+  const sKey = g.dataset.b + '|' + g.dataset.s;
+  RECIPES_OPEN.series[sKey] = !RECIPES_OPEN.series[sKey];
+  g.classList.toggle('collapsed', !!RECIPES_OPEN.series[sKey]);
+  const caret = g.querySelector(':scope > .sg-head .sg-caret');
+  if (caret) caret.textContent = RECIPES_OPEN.series[sKey] ? '▸' : '▾';
+});
+registerAction('cat:toggle', (el) => {
+  const g = el.closest('.brand-group');
+  if (!g) return;
+  const c = g.dataset.b;
+  RECIPES_OPEN.cats[c] = !RECIPES_OPEN.cats[c];
+  g.classList.toggle('collapsed', !!RECIPES_OPEN.cats[c]);
+  const caret = g.querySelector(':scope > .bg-head .bg-caret');
+  if (caret) caret.textContent = RECIPES_OPEN.cats[c] ? '▸' : '▾';
+});
+registerAction('recipes:clear', () => {
+  RECIPES_Q = '';
+  const box = $('#recipes-search');
+  if (box) box.value = '';
+  const body = $('#recipes-body');
+  if (body) body.innerHTML = renderRecipesList();
+  const clr = document.querySelector('#view .search-clear');
+  if (clr) clr.style.display = 'none';
 });
 registerAction('food:add', () => openManualForm());
 registerAction('food:edit', async (el) => {
