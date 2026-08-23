@@ -22,6 +22,71 @@ async function saveSpecMem(rec) {
   await dbPut(IDB.edits, rec);
 }
 
+/* ---------- 自动累积合并：按 品牌+食物名 聚合用户每一次记录的规格 ---------- */
+/* 用户录入只填「当前这一份」的真实情况；后台按 品牌+食物名+规格组合 自动累积：
+ * 有相同组合 → 更新食用时间+累计次数；无 → 新增组合。
+ * 当达到阈值（≥2容量 / ≥2甜度 / ≥2温度 / ≥1小料 / ≥3次重复）自动在觅食生成规格选择器。 */
+function specKey(shopId, name) { return 'spec:' + shopId + '|' + name; }
+async function getSpecLedger(shopId, name) {
+  try { const r = await dbGet(IDB.edits, specKey(shopId, name)); return r ? r.list : []; } catch (e) { return []; }
+}
+async function setSpecLedger(shopId, name, list) {
+  await dbPut(IDB.edits, { ek: specKey(shopId, name), kind: 'speclog', list });
+}
+/* 追加一条规格记录（来自录入/记录/下单）。同组合则更新时间+次数，否则新增。 */
+async function appendSpecLedger(shopId, name, spec, kcal, price) {
+  if (!shopId || !name) return;
+  const list = await getSpecLedger(shopId, name);
+  const combo = JSON.stringify({
+    sweetness: spec.sweetness || '', temp: spec.temp || '', size: spec.size || '',
+    toppings: (spec.toppings || []).slice().sort(), portion: spec.portion || '', spice: spec.spice || ''
+  });
+  const hit = list.find((r) => JSON.stringify({
+    sweetness: r.spec.sweetness || '', temp: r.spec.temp || '', size: r.spec.size || '',
+    toppings: (r.spec.toppings || []).slice().sort(), portion: r.spec.portion || '', spice: r.spec.spice || ''
+  }) === combo);
+  if (hit) { hit.ts = Date.now(); hit.count = (hit.count || 1) + 1; hit.kcal = kcal; hit.price = price; }
+  else list.push({ spec: {
+      sweetness: spec.sweetness || '', temp: spec.temp || '', size: spec.size || '',
+      toppings: (spec.toppings || []).slice(), portion: spec.portion || '', spice: spec.spice || ''
+    }, kcal, price, ts: Date.now(), count: 1 });
+  if (list.length > 40) list.splice(0, list.length - 40);
+  await setSpecLedger(shopId, name, list);
+}
+/* 从累积记录分析出可用的规格选项 + 是否触发选择器 */
+function analyzeSpecs(list) {
+  const sizes = [...new Set(list.map((r) => r.spec.size).filter(Boolean))];
+  const sweetness = [...new Set(list.map((r) => r.spec.sweetness).filter(Boolean))];
+  const temp = [...new Set(list.map((r) => r.spec.temp).filter(Boolean))];
+  const toppings = [...new Set(list.flatMap((r) => r.spec.toppings || []))];
+  const trigger = sizes.length >= 2 || sweetness.length >= 2 || temp.length >= 2 || toppings.length >= 1 || list.length >= 3;
+  return { sizes, sweetness, temp, toppings, trigger, count: list.length };
+}
+/* 取某规格组合的热量/价格：优先该组合最近一次记录，否则所有记录均值 */
+function pickSpecValue(list, spec) {
+  const combo = JSON.stringify({
+    sweetness: spec.sweetness || '', temp: spec.temp || '', size: spec.size || '',
+    toppings: (spec.toppings || []).slice().sort(), portion: spec.portion || '', spice: spec.spice || ''
+  });
+  const same = list.filter((r) => JSON.stringify({
+    sweetness: r.spec.sweetness || '', temp: r.spec.temp || '', size: r.spec.size || '',
+    toppings: (r.spec.toppings || []).slice().sort(), portion: r.spec.portion || '', spice: r.spec.spice || ''
+  }) === combo);
+  if (same.length) { const m = same.sort((a, b) => b.ts - a.ts)[0]; return { kcal: m.kcal, price: m.price }; }
+  const kcal = Math.round(list.reduce((a, r) => a + r.kcal, 0) / list.length);
+  const price = Math.round(list.reduce((a, r) => a + (r.price || 0), 0) / list.length * 100) / 100;
+  return { kcal, price };
+}
+/* 为「我的食谱」里的食物推导它在觅食对应的 shopId（命中平台店铺用其 id，否则合成稳定 id） */
+function foodShopId(food) {
+  const name = food.shop || food.brand;
+  const hit = [...BRANDS, ...SHOPS].find((s) => s.name === name);
+  if (hit) return hit.id;
+  let h = 0; const s = 'u:' + (name || food.name || '');
+  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return 'u' + h.toString(36);
+}
+
 /* ---------- 把编辑合并进 SHOP_MAP ---------- */
 async function applyShopEdits() {
   const edits = await getEdits();
