@@ -192,9 +192,10 @@ registerPage('shop', async function (root) {
   root.innerHTML = `
     <div class="shop-detail-head">
       <button class="shop-back" data-action="shop:back">←</button>
-      <div class="shop-detail-title">${esc(shop.name)}</div>
-      <button class="shop-edit" data-action="shop:edit" data-id="${shop.id}">✏️</button>
-      <button class="shop-fav" data-action="shop:fav" data-id="${shop.id}">⭐</button>
+      <div class="shop-detail-actions">
+        <button class="shop-edit" data-action="shop:edit" data-id="${shop.id}">✏️</button>
+        <button class="shop-fav" data-action="shop:fav" data-id="${shop.id}">⭐</button>
+      </div>
     </div>
     <div class="shop-hero">
       <div class="shop-hero-logo" style="--nc-soft:${hexA(shop.color || '#5E5CE6', 0.14)}">${shop.image ? `<img src="${shop.image}" alt="">` : shop.emoji}</div>
