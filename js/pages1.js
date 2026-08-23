@@ -52,21 +52,24 @@ registerPage('home', async function (root) {
     <div class="home-head">
       <div class="hh-date">${fmtDateCN(new Date())}</div>
       <div class="hh-meta">
-        ${streak > 0 ? `🔥 连续打卡 ${streak} 天` : '✨ 今天也要好好吃饭'}
+        ${streak > 0 ? `🔥 连续打卡 ${streak} 天` : '🔥 连续打卡 0 天'}
         <span class="hh-dot">·</span>
         <span class="hh-record" data-action="nav:go" data-page="record">📷 去记录</span>
       </div>
     </div>
-    <!-- ① 核心：今日剩余热量大圆环（绝对居中 · 第一视觉重心） -->
+    <!-- ① 核心：今日剩余热量大圆环（自适应 · 绝对居中 · 第一视觉重心） -->
     <div class="card home-ring">
-      <div class="ring-wrap lg">
-        <svg width="240" height="240" viewBox="0 0 240 240">
+      <div class="ring-wrap lg" role="img" aria-label="今日剩余热量 ${remaining} kcal">
+        <svg viewBox="0 0 240 240" preserveAspectRatio="xMidYMid meet">
           <circle cx="120" cy="120" r="100" fill="none" stroke="#E9E9EC" stroke-width="17"/>
           <circle cx="120" cy="120" r="100" fill="none" stroke="${ringColor}" stroke-width="17" stroke-linecap="round"
             stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" style="transition:stroke-dashoffset .8s cubic-bezier(.25,.8,.35,1),stroke .4s"/>
         </svg>
         <div class="ring-center">
-          <div class="rc-num">${remaining.toLocaleString()} <small>kcal</small></div>
+          <div class="rc-block">
+            <span class="rc-num">${remaining.toLocaleString()}</span>
+            <span class="rc-unit">kcal</span>
+          </div>
           <div class="rc-label">今日剩余热量</div>
         </div>
       </div>
