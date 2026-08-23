@@ -274,19 +274,19 @@ a { -webkit-touch-callout: none; }
 .macro-val b { color: var(--text); }
 
 /* ---------- 首页改版：大圆环 / 食谱库入口 ---------- */
-.ring-wrap.lg { width: 240px; height: 240px; }
-.ring-wrap.lg .rc-num { font-size: 44px; font-weight: 800; letter-spacing: -1px; }
-.ring-wrap.lg .rc-label { font-size: 13px; }
-/* ① 顶部信息区：日期 / 问候 / 打卡·记录 三行左对齐 */
-.home-head { margin-bottom: 14px; padding: 2px 2px 0; }
+/* ① 顶部信息区：日期单行 + 打卡·记录单行（均左对齐） */
+.home-head { margin-bottom: 12px; padding: 2px 2px 0; }
 .hh-date { font-size: 14px; font-weight: 700; color: var(--sub); letter-spacing: .3px; }
-.hh-greet { font-size: 21px; font-weight: 800; margin-top: 4px; letter-spacing: .2px; }
 .hh-meta { font-size: 13px; color: var(--sub); margin-top: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .hh-dot { color: var(--sub2); }
 .hh-record { color: var(--brand); font-weight: 700; cursor: pointer; }
-/* ② 圆环卡：绝对居中（水平垂直）· 数字为第一视觉重心 */
-.home-ring { text-align: center; padding: 22px 18px 18px; }
+/* ② 圆环卡：水平居中 · 数字为第一视觉重心 · 内部文字绝对居中且不遮挡 */
+.home-ring { text-align: center; padding: 20px 18px 18px; }
 .home-ring .ring-wrap { margin: 0 auto; }
+.ring-wrap.lg { width: 240px; height: 240px; }
+.ring-wrap.lg .ring-center { padding: 0 10px; box-sizing: border-box; }
+.ring-wrap.lg .rc-num { font-size: clamp(34px, 11vw, 46px); font-weight: 800; letter-spacing: -1px; white-space: nowrap; }
+.ring-wrap.lg .rc-label { font-size: 13px; }
 .rc-num { line-height: 1; }
 .rc-num small { font-size: 15px; font-weight: 700; color: var(--sub); margin-left: 4px; }
 .rc-foot { font-size: 13px; font-weight: 700; margin-top: 14px; }
