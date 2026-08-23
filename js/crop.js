@@ -2,7 +2,7 @@
  * 热量手账 · 照片裁剪编辑器（快速录入）
  * 纯前端实现：四边/四角 20pt 大触控区拖拽（1:1 跟随、边界阻尼吸附）
  *           / 框内拖动移动选框 / 框外拖动移动图片 / 双指捏合缩放
- *           / 旋转90° / 重置 / 预设比例（自由·1:1·4:3·3:2·16:9）
+ *           / 旋转90° / 重置 / 预设比例（自由·1:1·3:4·2:3·9:16 竖图）
  *           / 井字网格线 / 框外暗化 / 中心十字 / 边缘高亮 / 触觉反馈
  * 不依赖任何第三方库，输出压缩后的 dataURL，直接走现有统一渲染链路。
  * ============================================================ */
@@ -50,11 +50,11 @@ function openCropEditor(opts) {
       <div class="crop-ratios">
         <button data-ratio="free" class="on">自由</button>
         <button data-ratio="1:1">1:1</button>
-        <button data-ratio="4:3">4:3</button>
-        <button data-ratio="3:2">3:2</button>
-        <button data-ratio="16:9">16:9</button>
+        <button data-ratio="3:4">3:4</button>
+        <button data-ratio="2:3">2:3</button>
+        <button data-ratio="9:16">9:16</button>
       </div>
-      <div class="crop-hint">拖动四边/四角裁剪 · 框内移动选框 · 框外移动图片 · 双指缩放</div>
+      <div class="crop-hint">拖动四角/四边裁剪（跟手不跑偏）· 框内移动选框 · 框外平移图片 · 双指缩放</div>
     </div>`;
   document.body.appendChild(overlay);
 
@@ -77,17 +77,17 @@ function openCropEditor(opts) {
   let stageRect = null;
   let rs = null;                                // resize / pan / box-move 基线
   let pz = null;                                // pinch 基线
-  const EDGE = 9;                               // 边缘热区外延（px ≈ 6pt）：只有精准触碰边缘线才触发
-  const CORNER = 11;                            // 角点热区半边长（px）：四角各 22×22px 独立热区，与边缘热区分开
-  const MOVE_THRESHOLD = 3;                     // 手指按压+拖动 ≥3px 才触发调整，防止误触
+  // 触控热区：双向对称，覆盖可见 22px 手柄圆 + 余量，彻底消除“点到框外却平移图片”的误触死区
+  const CORNER_ZONE = 20;                       // 角点热区半径 px：四角各 40×40px 命中区
+  const EDGE_ZONE = 16;                         // 边缘热区带宽 px（框内+框外双向）
   let clampFlash = 0;                           // 边界红色提示 timer
   const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms || 10); } catch (_) {} };
 
   function ratioVal() {
     if (ratio === '1:1') return 1;
-    if (ratio === '4:3') return 4 / 3;
-    if (ratio === '3:2') return 3 / 2;
-    if (ratio === '16:9') return 16 / 9;
+    if (ratio === '3:4') return 3 / 4;
+    if (ratio === '2:3') return 2 / 3;
+    if (ratio === '9:16') return 9 / 16;
     return 0;
   }
   function measure() {
@@ -102,11 +102,14 @@ function openCropEditor(opts) {
 
   function setBoxByRatio() {
     const rv = ratioVal();
+    const m = 0.06;
+    const maxW = SW * (1 - m * 2), maxH = SH * (1 - m * 2);
     let w, h;
     if (rv > 0) {
-      const m = 0.06;
-      const maxW = SW * (1 - m * 2), maxH = SH * (1 - m * 2);
-      if (maxW / maxH > rv) { h = maxH; w = h * rv; } else { w = maxW; h = w / rv; }
+      if (maxW / maxH > rv) { h = maxH; w = h * rv; }
+      else { w = maxW; h = w / rv; }
+      if (h > maxH) { h = maxH; w = h * rv; }   // 竖图兜底：不超出舞台
+      if (w > maxW) { w = maxW; h = w / rv; }
     } else {
       w = SW * 0.86; h = SH * 0.72;
     }
@@ -153,10 +156,10 @@ function openCropEditor(opts) {
     draw();
   }
 
-  /* ---------- 几何辅助：分层触控（角点独立热区 / 边缘中段 / 框内） ---------- */
-  // 低灵敏度方案：角点 = 四角各 22×22px 独立方形热区（仅触发双向缩放）；
-  // 边缘 = 边中段 ±9px 单向热区；二者不重叠，避免沿边拖拽误触角落。
-  function edgeHit(x, y) {
+  /* ---------- 几何辅助：分层触控（角点独立热区 / 边缘双向热区 / 框内） ---------- */
+  // 命中检测：角点优先（四角各 CORNER_ZONE 半径圆形热区），其次边缘（到四边线 ≤ EDGE_ZONE，
+  // 框内+框外双向对称），二者覆盖整个可见手柄圆，彻底消除“点到框外却平移图片”的死区。
+  function hitHandle(x, y) {
     const corners = [
       { h: 'tl', cx: bx, cy: by },
       { h: 'tr', cx: bx + bw, cy: by },
@@ -164,17 +167,29 @@ function openCropEditor(opts) {
       { h: 'br', cx: bx + bw, cy: by + bh },
     ];
     for (const c of corners) {
-      if (Math.abs(x - c.cx) <= CORNER && Math.abs(y - c.cy) <= CORNER) return c.h;
+      if (Math.abs(x - c.cx) <= CORNER_ZONE && Math.abs(y - c.cy) <= CORNER_ZONE) return c.h;
     }
-    // 边缘：仅命中边中段（排除角点 CORNER 范围），单向缩放
-    const dT = y - by, dB = (by + bh) - y, dL = x - bx, dR = (bx + bw) - x;
-    const midX = x > bx + CORNER && x < bx + bw - CORNER;
-    const midY = y > by + CORNER && y < by + bh - CORNER;
-    if (dT >= 0 && dT <= EDGE && midX) return 't';
-    if (dB >= 0 && dB <= EDGE && midX) return 'b';
-    if (dL >= 0 && dL <= EDGE && midY) return 'l';
-    if (dR >= 0 && dR <= EDGE && midY) return 'r';
-    return '';
+    const dT = by - y, dB = y - (by + bh), dL = bx - x, dR = x - (bx + bw);
+    const inX = x > bx - EDGE_ZONE && x < bx + bw + EDGE_ZONE;
+    const inY = y > by - EDGE_ZONE && y < by + bh + EDGE_ZONE;
+    let best = '', bestD = EDGE_ZONE;
+    if (dT >= 0 && dT <= bestD && inX && x > bx + CORNER_ZONE && x < bx + bw - CORNER_ZONE) { best = 't'; bestD = dT; }
+    if (dB >= 0 && dB <= bestD && inX && x > bx + CORNER_ZONE && x < bx + bw - CORNER_ZONE) { best = 'b'; bestD = dB; }
+    if (dL >= 0 && dL <= bestD && inY && y > by + CORNER_ZONE && y < by + bh - CORNER_ZONE) { best = 'l'; bestD = dL; }
+    if (dR >= 0 && dR <= bestD && inY && y > by + CORNER_ZONE && y < by + bh - CORNER_ZONE) { best = 'r'; bestD = dR; }
+    return best;
+  }
+  // 被拖动手柄的当前坐标（舞台 px），用于计算抓取偏移，使手柄精确“吸附”手指
+  function handlePoint(h) {
+    if (h === 'tl') return [bx, by];
+    if (h === 'tr') return [bx + bw, by];
+    if (h === 'bl') return [bx, by + bh];
+    if (h === 'br') return [bx + bw, by + bh];
+    if (h === 't') return [bx + bw / 2, by];
+    if (h === 'b') return [bx + bw / 2, by + bh];
+    if (h === 'l') return [bx, by + bh / 2];
+    if (h === 'r') return [bx + bw, by + bh / 2];
+    return [bx, by];
   }
   function insideBox(x, y) { return x >= bx && x <= bx + bw && y >= by && y <= by + bh; }
 
@@ -222,7 +237,7 @@ function openCropEditor(opts) {
     if (pointers.size > 0) return;
     const sRect = stage.getBoundingClientRect();
     const sx = e.clientX - sRect.left, sy = e.clientY - sRect.top;
-    const h = edgeHit(sx, sy);
+    const h = hitHandle(sx, sy);
     const inBox = insideBox(sx, sy);
     if (h) {
       box.classList.add('edge-near');
@@ -256,13 +271,14 @@ function openCropEditor(opts) {
       rs = null;
       return;
     }
-    // 单指：近边缘 → 缩放；框内 → 移动选框；框外 → 移动图片
-    const h = edgeHit(sx, sy);
+    // 单指：近边缘/角点 → 缩放（吸附手指，1:1 跟手）；框内 → 移动选框；框外 → 移动图片
+    const h = hitHandle(sx, sy);
     if (h) {
       mode = 'resize';
       box.classList.add('resizing');
       setActiveHandles(h);
-      rs = { h: h, bx: bx, by: by, bw: bw, bh: bh, px: e.clientX, py: e.clientY };
+      const hp = handlePoint(h);
+      rs = { h: h, sb: { x: bx, y: by, w: bw, h: bh }, gx: sx - hp[0], gy: sy - hp[1] };
       buzz(10);
     } else if (insideBox(sx, sy)) {
       mode = 'box-move';
@@ -279,9 +295,10 @@ function openCropEditor(opts) {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (mode === 'resize' && rs) {
-      const dx = e.clientX - rs.px, dy = e.clientY - rs.py;
-      if (Math.hypot(dx, dy) < MOVE_THRESHOLD) { scheduleDraw(); return; } // 阈值内不触发，防误触
-      resizeBox(rs.h, dx, dy);
+      const sRect = stage.getBoundingClientRect();
+      const sx = e.clientX - sRect.left, sy = e.clientY - sRect.top;
+      const px = sx - rs.gx, py = sy - rs.gy;   // 被拖动手柄应到达的坐标（手柄精确跟随手指）
+      resizeBox(rs.h, px, py, rs.sb);
       positionBox();
     } else if (mode === 'box-move' && rs) {
       const nx = rs.bx0 + (e.clientX - rs.px);
@@ -344,27 +361,48 @@ function openCropEditor(opts) {
     tx = cx - SW / 2; ty = cy - SH / 2;
   }
 
-  function resizeBox(handle, dx, dy) {
-    let x1 = bx, y1 = by, x2 = bx + bw, y2 = by + bh;
-    if (handle.indexOf('l') >= 0) x1 = bx + dx;
-    if (handle.indexOf('r') >= 0) x2 = bx + bw + dx;
-    if (handle.indexOf('t') >= 0) y1 = by + dy;
-    if (handle.indexOf('b') >= 0) y2 = by + bh + dy;
-    let nw = x2 - x1, nh = y2 - y1;
+  /* 角点缩放：固定对角，按抓取点驱动，保持比例 */
+  function ratioCorner(h, px, py, sb, rv) {
+    const MIN = 44;
+    let ax, ay;                          // 固定锚点（对角）
+    if (h === 'tl') { ax = sb.x + sb.w; ay = sb.y + sb.h; }
+    else if (h === 'tr') { ax = sb.x; ay = sb.y + sb.h; }
+    else if (h === 'bl') { ax = sb.x + sb.w; ay = sb.y; }
+    else { ax = sb.x; ay = sb.y; }      // br
+    let nw = Math.max(MIN, Math.abs(ax - px));
+    let nh = Math.max(MIN, Math.abs(ay - py));
+    if (Math.abs(ax - px) >= Math.abs(ay - py)) nh = nw / rv; else nw = nh * rv;
+    const sx = (h.indexOf('l') >= 0) ? -1 : 1;
+    const sy = (h.indexOf('t') >= 0) ? -1 : 1;
+    const x2 = ax + sx * nw, y2 = ay + sy * nh;
+    return { x1: Math.min(ax, x2), y1: Math.min(ay, y2), x2: Math.max(ax, x2), y2: Math.max(ay, y2) };
+  }
+  /* 边缘缩放：固定对边，按抓取点驱动，保持比例（rv>0） */
+  function ratioEdge(h, px, py, sb, rv) {
+    const MIN = 44;
+    let x1 = sb.x, y1 = sb.y, x2 = sb.x + sb.w, y2 = sb.y + sb.h;
+    if (h === 'l') { x1 = Math.min(x2 - MIN, px); const nw = x2 - x1; const nh = nw / rv; y1 = sb.y; y2 = y1 + nh; }
+    else if (h === 'r') { x2 = Math.max(x1 + MIN, px); const nw = x2 - x1; const nh = nw / rv; y1 = sb.y; y2 = y1 + nh; }
+    else if (h === 't') { y1 = Math.min(y2 - MIN, py); const nh = y2 - y1; const nw = nh * rv; x1 = sb.x; x2 = x1 + nw; }
+    else { y2 = Math.max(y1 + MIN, py); const nh = y2 - y1; const nw = nh * rv; x1 = sb.x; x2 = x1 + nw; }
+    return { x1, y1, x2, y2 };
+  }
+  function resizeBox(handle, px, py, sb) {
     const rv = ratioVal();
-    const MIN = 36;
-    if (nw < MIN) nw = MIN;
-    if (nh < MIN) nh = MIN;
-    if (rv > 0) {
-      const isCorner = handle.length === 2;
-      if (isCorner) {
-        if (Math.abs(dx) >= Math.abs(dy)) nh = nw / rv; else nw = nh * rv;
-      } else {
-        if (handle === 'l' || handle === 'r') nh = nw / rv; else nw = nh * rv;
-      }
-      const anchorLeft = handle.indexOf('l') >= 0 ? (bx + bw) : x1;
-      const anchorTop = handle.indexOf('t') >= 0 ? (by + bh) : y1;
-      x1 = anchorLeft - nw; y1 = anchorTop - nh; x2 = anchorLeft; y2 = anchorTop;
+    let x1, y1, x2, y2;
+    if (rv > 0 && handle.length === 2) {
+      const r = ratioCorner(handle, px, py, sb, rv); x1 = r.x1; y1 = r.y1; x2 = r.x2; y2 = r.y2;
+    } else if (rv > 0) {
+      const r = ratioEdge(handle, px, py, sb, rv); x1 = r.x1; y1 = r.y1; x2 = r.x2; y2 = r.y2;
+    } else {
+      x1 = sb.x; y1 = sb.y; x2 = sb.x + sb.w; y2 = sb.y + sb.h;
+      if (handle.indexOf('l') >= 0) x1 = px;
+      if (handle.indexOf('r') >= 0) x2 = px;
+      if (handle.indexOf('t') >= 0) y1 = py;
+      if (handle.indexOf('b') >= 0) y2 = py;
+      const MIN = 44;
+      if (x2 - x1 < MIN) { if (handle.indexOf('l') >= 0) x1 = x2 - MIN; else x2 = x1 + MIN; }
+      if (y2 - y1 < MIN) { if (handle.indexOf('t') >= 0) y1 = y2 - MIN; else y2 = y1 + MIN; }
     }
     // 限制在舞台内（吸附边界；触到边界给红色反馈）
     let over = 0;
@@ -372,7 +410,7 @@ function openCropEditor(opts) {
     if (y1 < 0) { over += -y1; y2 -= y1; y1 = 0; }
     if (x2 > SW) { over += x2 - SW; x1 -= (x2 - SW); x2 = SW; }
     if (y2 > SH) { over += y2 - SH; y1 -= (y2 - SH); y2 = SH; }
-    bx = x1; by = y1; bw = Math.max(MIN, x2 - x1); bh = Math.max(MIN, y2 - y1);
+    bx = x1; by = y1; bw = Math.max(1, x2 - x1); bh = Math.max(1, y2 - y1);
     if (over > 0.5) flashClamp();
   }
 
