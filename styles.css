@@ -254,11 +254,12 @@ a { -webkit-touch-callout: none; }
 
 /* ---------- 圆环 ---------- */
 .ring-wrap { position: relative; width: 216px; height: 216px; margin: 6px auto 0; }
-.ring-wrap svg { transform: rotate(-90deg); }
+.ring-wrap svg { display: block; margin: 0 auto; transform: rotate(-90deg); }
 .ring-center {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center;
+  box-sizing: border-box;
 }
 .ring-center .rc-num { font-size: 30px; font-weight: 800; letter-spacing: -.5px; }
 .ring-center .rc-label { font-size: 12px; color: var(--sub); margin-top: 2px; }
@@ -281,15 +282,15 @@ a { -webkit-touch-callout: none; }
 .hh-dot { color: var(--sub2); }
 .hh-record { color: var(--brand); font-weight: 700; cursor: pointer; }
 /* ② 圆环卡：水平居中 · 数字为第一视觉重心 · 内部文字绝对居中且不遮挡 */
-.home-ring { text-align: center; padding: 20px 18px 18px; }
-.home-ring .ring-wrap { margin: 0 auto; }
-.ring-wrap.lg { width: 240px; height: 240px; }
-.ring-wrap.lg .ring-center { padding: 0 10px; box-sizing: border-box; }
-.ring-wrap.lg .rc-num { font-size: clamp(34px, 11vw, 46px); font-weight: 800; letter-spacing: -1px; white-space: nowrap; }
+.home-ring { text-align: center; padding: 20px 18px 22px; }
+.home-ring .ring-wrap { margin-left: auto; margin-right: auto; display: block; }
+.ring-wrap.lg { width: 260px; height: 260px; }
+.ring-wrap.lg .ring-center { padding: 0 14px; }
+.ring-wrap.lg .rc-num { font-size: clamp(38px, 10vw, 44px); font-weight: 800; letter-spacing: -1px; white-space: nowrap; }
 .ring-wrap.lg .rc-label { font-size: 13px; }
 .rc-num { line-height: 1; }
-.rc-num small { font-size: 15px; font-weight: 700; color: var(--sub); margin-left: 4px; }
-.rc-foot { font-size: 13px; font-weight: 700; margin-top: 14px; }
+.rc-num small { font-size: 14px; font-weight: 700; color: var(--sub); margin-left: 6px; }
+.rc-foot { font-size: 13px; font-weight: 700; line-height: 1.4; margin-top: 14px; }
 /* ③ 三大营养素：与圆环间距 24pt */
 .macro-box { margin-top: 24px; padding: 0 2px; }
 .home-recipes { margin-top: 14px; cursor: pointer; padding: 15px 18px; }
@@ -994,7 +995,7 @@ a { -webkit-touch-callout: none; }
   .page-title { font-size: 24px; }
   .num-big { font-size: 28px; }
   .ring-wrap { width: 190px; height: 190px; }
-  .ring-wrap.lg { width: 200px; height: 200px; }
+  .ring-wrap.lg { width: 210px; height: 210px; }
   .ring-wrap.lg .rc-num { font-size: 32px; }
   .ring-center .rc-num { font-size: 26px; }
   .stat-row { grid-template-columns: 1fr; }
