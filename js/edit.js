@@ -11,6 +11,16 @@
 async function getEdits() { return dbGetAll(IDB.edits); }
 async function saveEdit(rec) { await dbPut(IDB.edits, rec); }
 async function delEdit(ek) { await dbDel(IDB.edits, ek); }
+/* 规格记忆：按 shopId+itemName 记录用户常选规格，下次开单预填（累积合并机制） */
+async function loadSpecMem(shopId, name) {
+  try { return await dbGet(IDB.edits, 'sm:' + shopId + ':' + name) || null; } catch (e) { return null; }
+}
+async function saveSpecMem(rec) {
+  rec.ek = 'sm:' + rec.shopId + ':' + rec.name;
+  rec.kind = 'specmem';
+  rec.ts = Date.now();
+  await dbPut(IDB.edits, rec);
+}
 
 /* ---------- 把编辑合并进 SHOP_MAP ---------- */
 async function applyShopEdits() {
