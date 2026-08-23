@@ -963,6 +963,17 @@ function openManualForm(existing, compare) {
     <div class="field"><label>店铺名（选填）</label><input id="f-shop" type="text" placeholder="留空则自动用品牌名关联觅食" value="${esc(f.shop || '')}"></div>
     <div class="field"><label>分量描述（选填）</label><input id="f-portion" type="text" placeholder="一碗 / 一份 / 大份 / 小份" value="${esc(f.portion || '')}"></div>
     <div class="field">
+      <label>规格（选填 · 只填「当前这一份」的真实情况）</label>
+      <div class="spec-mini">
+        <div class="sm-row"><span class="sm-k">甜度</span><div class="chips" data-spec="sweetness">${['无糖','3分糖','5分糖','7分糖','全糖'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.sweetness === v ? 'on' : ''}" data-action="form:spec" data-g="sweetness" data-v="${v}">${v}</button>`).join('')}</div></div>
+        <div class="sm-row"><span class="sm-k">温度</span><div class="chips" data-spec="temp">${['热','温','常温','冰'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.temp === v ? 'on' : ''}" data-action="form:spec" data-g="temp" data-v="${v}">${v}</button>`).join('')}</div></div>
+        <div class="sm-row"><span class="sm-k">容量</span><div class="chips" data-spec="size">${['小杯','中杯','大杯'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.size === v ? 'on' : ''}" data-action="form:spec" data-g="size" data-v="${v}">${v}</button>`).join('')}</div></div>
+        <div class="sm-row"><span class="sm-k">小料</span><div class="chips" data-spec="toppings">${['珍珠','椰果','布丁','芋圆','燕麦'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.toppings && f.spec.toppings.includes(v) ? 'on' : ''}" data-action="form:spec" data-g="toppings" data-v="${v}">${v}</button>`).join('')}</div></div>
+        <div class="sm-row"><span class="sm-k">分量</span><div class="chips" data-spec="portion">${['小份','中份','大份'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.portion === v ? 'on' : ''}" data-action="form:spec" data-g="portion" data-v="${v}">${v}</button>`).join('')}</div></div>
+        <div class="sm-row"><span class="sm-k">口味</span><div class="chips" data-spec="spice">${['不辣','微辣','中辣','特辣'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.spice === v ? 'on' : ''}" data-action="form:spec" data-g="spice" data-v="${v}">${v}</button>`).join('')}</div></div>
+      </div>
+    </div>
+    <div class="field">
       <label>分类</label>
       <div class="chips" id="f-cat">
         ${ALL_CATS.map((c) => `<button class="chip ${(f.category || '食堂') === c ? 'on' : ''}" data-action="form:cat" data-v="${c}">${c}</button>`).join('')}
@@ -986,6 +997,7 @@ function openManualForm(existing, compare) {
     <button class="btn primary lg" data-action="form:save" data-id="${f.id || ''}">${existing ? '保存修改' : '保存'}</button>`);
   window._formPhoto = f.photo || '';
   window._formCat = f.category || '食堂';
+  window._formSpec = f.spec ? JSON.parse(JSON.stringify(f.spec)) : { sweetness: '', temp: '', size: '', toppings: [], portion: '', spice: '' };
   window._formUpdateCal = false;
   window._formCompare = compare;
   window._formCompareId = existing ? existing.id : null;
@@ -1060,6 +1072,20 @@ registerAction('form:cat', (el) => {
   window._formCat = el.dataset.v;
   document.querySelectorAll('#f-cat .chip').forEach((c) => c.classList.toggle('on', c === el));
 });
+registerAction('form:spec', (el) => {
+  const g = el.dataset.g, v = el.dataset.v;
+  if (g === 'toppings') {
+    const arr = window._formSpec.toppings;
+    if (arr.includes(v)) { window._formSpec.toppings = arr.filter((t) => t !== v); el.classList.remove('on'); }
+    else { arr.push(v); el.classList.add('on'); }
+  } else {
+    if (window._formSpec[g] === v) { window._formSpec[g] = ''; el.classList.remove('on'); }
+    else {
+      window._formSpec[g] = v;
+      document.querySelectorAll(`#sheet-root .chips[data-spec="${g}"] .chip`).forEach((c) => c.classList.toggle('on', c === el));
+    }
+  }
+});
 registerAction('form:update-cal', () => {
   const cal = window._formCompare;
   if (!cal) return;
@@ -1108,8 +1134,12 @@ registerAction('form:save', async (el) => {
     editCount: old ? (old.editCount || 0) + 1 : 0,
     macros: old ? old.macros : estimateMacros(kcal)
   };
+  const sp = window._formSpec || {};
+  const specFilled = !!(sp.sweetness || sp.temp || sp.size || (sp.toppings && sp.toppings.length) || sp.portion || sp.spice);
+  if (specFilled) food.spec = { sweetness: sp.sweetness || '', temp: sp.temp || '', size: sp.size || '', toppings: (sp.toppings || []).slice(), portion: sp.portion || '', spice: sp.spice || '' };
   if (window._formUpdateCal) { food.calAdopted = true; }
   const synced = await saveFood(food);
+  if (specFilled) await appendSpecLedger(foodShopId(food), food.name, food.spec, food.kcal, food.price);
   await loadFoods();
   if (old && synced > 0) toast(`已同步 ${synced} 条历史记录的名称/照片 · 历史热量保持不变`, 'brand');
   const also = $('#also-record') && $('#also-record').checked;
