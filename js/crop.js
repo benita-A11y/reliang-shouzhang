@@ -77,7 +77,9 @@ function openCropEditor(opts) {
   let stageRect = null;
   let rs = null;                                // resize / pan / box-move 基线
   let pz = null;                                // pinch 基线
-  const TOUCH = 22;                             // 边缘触控外延（px），角点热区直径 ≈ 2*1.4*TOUCH ≥ 44pt
+  const EDGE = 9;                               // 边缘热区外延（px ≈ 6pt）：只有精准触碰边缘线才触发
+  const CORNER = 11;                            // 角点热区半边长（px）：四角各 22×22px 独立热区，与边缘热区分开
+  const MOVE_THRESHOLD = 3;                     // 手指按压+拖动 ≥3px 才触发调整，防止误触
   let clampFlash = 0;                           // 边界红色提示 timer
   const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms || 10); } catch (_) {} };
 
@@ -151,8 +153,9 @@ function openCropEditor(opts) {
     draw();
   }
 
-  /* ---------- 几何辅助：分层触控（角点圆形热区 / 边缘中段 / 框内） ---------- */
-  // 关键修复：角点只在「离角点的圆形热区」内才触发双向缩放，避免沿边拖拽时误触角落（四角过于灵敏）。
+  /* ---------- 几何辅助：分层触控（角点独立热区 / 边缘中段 / 框内） ---------- */
+  // 低灵敏度方案：角点 = 四角各 22×22px 独立方形热区（仅触发双向缩放）；
+  // 边缘 = 边中段 ±9px 单向热区；二者不重叠，避免沿边拖拽误触角落。
   function edgeHit(x, y) {
     const corners = [
       { h: 'tl', cx: bx, cy: by },
@@ -160,20 +163,17 @@ function openCropEditor(opts) {
       { h: 'bl', cx: bx, cy: by + bh },
       { h: 'br', cx: bx + bw, cy: by + bh },
     ];
-    let best = '', bestD = Infinity;
     for (const c of corners) {
-      const d = Math.hypot(x - c.cx, y - c.cy);
-      if (d < bestD) { bestD = d; best = c.h; }
+      if (Math.abs(x - c.cx) <= CORNER && Math.abs(y - c.cy) <= CORNER) return c.h;
     }
-    if (bestD <= TOUCH * 1.4) return best;     // 角点：圆形热区（直径≈2*1.4*TOUCH ≥ 44pt）
-    // 边缘：仅命中边中段（排除角点区域），单向缩放
+    // 边缘：仅命中边中段（排除角点 CORNER 范围），单向缩放
     const dT = y - by, dB = (by + bh) - y, dL = x - bx, dR = (bx + bw) - x;
-    const midX = x > bx + TOUCH * 1.4 && x < bx + bw - TOUCH * 1.4;
-    const midY = y > by + TOUCH * 1.4 && y < by + bh - TOUCH * 1.4;
-    if (dT >= 0 && dT <= TOUCH && midX) return 't';
-    if (dB >= 0 && dB <= TOUCH && midX) return 'b';
-    if (dL >= 0 && dL <= TOUCH && midY) return 'l';
-    if (dR >= 0 && dR <= TOUCH && midY) return 'r';
+    const midX = x > bx + CORNER && x < bx + bw - CORNER;
+    const midY = y > by + CORNER && y < by + bh - CORNER;
+    if (dT >= 0 && dT <= EDGE && midX) return 't';
+    if (dB >= 0 && dB <= EDGE && midX) return 'b';
+    if (dL >= 0 && dL <= EDGE && midY) return 'l';
+    if (dR >= 0 && dR <= EDGE && midY) return 'r';
     return '';
   }
   function insideBox(x, y) { return x >= bx && x <= bx + bw && y >= by && y <= by + bh; }
@@ -280,6 +280,7 @@ function openCropEditor(opts) {
 
     if (mode === 'resize' && rs) {
       const dx = e.clientX - rs.px, dy = e.clientY - rs.py;
+      if (Math.hypot(dx, dy) < MOVE_THRESHOLD) { scheduleDraw(); return; } // 阈值内不触发，防误触
       resizeBox(rs.h, dx, dy);
       positionBox();
     } else if (mode === 'box-move' && rs) {
