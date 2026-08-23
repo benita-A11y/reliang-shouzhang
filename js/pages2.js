@@ -171,10 +171,10 @@ async function shopUserFoodsHTML(shop) {
     <div class="section-title" style="margin-top:18px">📖 我记录的（${mine.length}）<span class="small muted" style="font-weight:500">与觅食打通</span></div>
     <div class="menu-list">
       ${mine.map((f) => `
-        <div class="menu-item" data-action="hunt:fv" data-id="${f.id}">
+        <div class="menu-item" data-action="userfood:open" data-id="${f.id}">
           <div class="mi-photo">${photoHTML(f)}</div>
-          <div class="mi-info"><div class="mi-name">${esc(f.name)}</div><div class="mi-meta">${f.kcal}kcal${f.series ? ' · ' + esc(f.series) : ''} · 我的食谱</div></div>
-          <div class="mi-right"><button class="point-it" data-action="hunt:fv" data-id="${f.id}">记一下</button></div>
+          <div class="mi-info"><div class="mi-name">${esc(f.name)}</div><div class="mi-meta">¥${Number(f.price || 0).toFixed(2)} · ${f.kcal}kcal${f.series ? ' · ' + esc(f.series) : ''}</div></div>
+          <div class="mi-right"><button class="point-it" data-action="userfood:open" data-id="${f.id}">点它</button></div>
         </div>`).join('')}
     </div>`;
 }
@@ -370,6 +370,102 @@ async function openBillFlow(item, shop) {
   openSheet(''); // 先打开弹层（replaceSheet 只替换内容，不会弹出）
   renderSpecSheet(true);
 }
+/* ============================================================
+ * 自动累积合并 → 用户食物在觅食的规格选择器
+ * 用户食物录入只填「当前这一份」；后台按 品牌+食物名 累积所有规格记录，
+ * 达阈值后自动生成选择器，选项即全部累积过的规格，热量/价格取最近或均值。
+ * ============================================================ */
+const UFLOW = { food: null, shopId: null, ledger: [], ana: null, spec: null };
+async function openUserFoodFlow(food) {
+  const shopId = foodShopId(food);
+  const ledger = await getSpecLedger(shopId, food.name);
+  const ana = analyzeSpecs(ledger);
+  UFLOW.food = food; UFLOW.shopId = shopId; UFLOW.ledger = ledger; UFLOW.ana = ana;
+  const base = food.spec || {};
+  UFLOW.spec = {
+    sweetness: base.sweetness || '', temp: base.temp || '', size: base.size || '',
+    toppings: (base.toppings || []).slice(), portion: base.portion || '', spice: base.spice || ''
+  };
+  openSheet('');
+  renderUserSpecSheet();
+}
+function ufDimOpts(ana, food, g) {
+  const acc = ana[g];
+  if (acc && acc.length) return acc;
+  const own = food.spec && food.spec[g];
+  return own ? [own] : [];
+}
+function renderUserSpecSheet() {
+  const food = UFLOW.food, ana = UFLOW.ana, sp = UFLOW.spec, ledger = UFLOW.ledger;
+  const dims = [];
+  const sizeO = ufDimOpts(ana, food, 'sizes'); if (sizeO.length) dims.push(['size', '容量', sizeO]);
+  const swO = ufDimOpts(ana, food, 'sweetness'); if (swO.length) dims.push(['sweetness', '甜度', swO]);
+  const tpO = ufDimOpts(ana, food, 'temp'); if (tpO.length) dims.push(['temp', '温度', tpO]);
+  const tkO = ufDimOpts(ana, food, 'toppings'); if (tkO.length) dims.push(['toppings', '小料', tkO]);
+  const val = ledger.length ? pickSpecValue(ledger, sp) : { kcal: food.kcal, price: food.price };
+  const kcal = val.kcal || food.kcal;
+  const price = (val.price != null && val.price !== 0) ? val.price : food.price;
+  const specStr = [sp.size, sp.sweetness, sp.temp, (sp.toppings || []).join('+')].filter(Boolean).join('/') || '默认规格';
+  replaceSheet(`
+    <button class="sheet-close" data-action="sheet:close">✕</button>
+    <div class="sheet-title">${esc(food.shop || food.brand || '🍽️')} ${esc(food.name)}</div>
+    <div class="muted small" style="text-align:center;margin-bottom:10px">${ana.trigger ? `已累积 ${ana.count} 次规格记录 · 自动生成选择器` : '你录入时的规格 · 可直接记录'}</div>
+    ${dims.length ? dims.map(([g, label, opts]) => `
+      <div class="spec-group">
+        <div class="spec-title">${label}</div>
+        <div class="chips">${opts.map((v) => `<button type="button" class="chip ${g === 'toppings' ? (sp.toppings || []).includes(v) : sp[g] === v ? 'on' : ''}" data-action="uflow:spec" data-g="${g}" data-v="${esc(v)}">${esc(v)}</button>`).join('')}</div>
+      </div>`).join('') : `<div class="muted small" style="text-align:center;margin:8px 0 4px">暂无规格维度，按默认记录</div>`}
+    <div class="spec-summary">已选规格：${esc(specStr)}</div>
+    <div class="spec-panel" style="background:rgba(0,0,0,0.04)">
+      <div class="spec-total">
+        <div class="st-kcal">${kcal}<span class="small muted" style="font-size:12px"> kcal</span></div>
+        <div class="st-price">¥${Number(price).toFixed(2)}</div>
+        <div class="st-tip">${ledger.length ? '按你累积的最近/均值规格' : '默认（该组合尚未累积）'}</div>
+      </div>
+    </div>
+    <div style="height:10px"></div>
+    <div class="spec-exits">
+      <button class="exit-btn record" data-action="uflow:record">📝 记一下<br><small>记入今日三餐</small></button>
+      <button class="exit-btn fav" data-action="uflow:fav">⭐ 收藏<br><small>存进食谱</small></button>
+    </div>`);
+}
+registerAction('userfood:open', async (el) => {
+  const f = FOODS.find((x) => x.id === el.dataset.id);
+  if (f) await openUserFoodFlow(f);
+});
+registerAction('uflow:spec', (el) => {
+  const g = el.dataset.g, v = el.dataset.v;
+  if (g === 'toppings') {
+    if (UFLOW.spec.toppings.includes(v)) UFLOW.spec.toppings = UFLOW.spec.toppings.filter((t) => t !== v);
+    else UFLOW.spec.toppings.push(v);
+  } else {
+    UFLOW.spec[g] = (UFLOW.spec[g] === v) ? '' : v;
+  }
+  renderUserSpecSheet();
+});
+registerAction('uflow:record', async () => {
+  const food = UFLOW.food, sp = UFLOW.spec, ledger = UFLOW.ledger;
+  const val = ledger.length ? pickSpecValue(ledger, sp) : { kcal: food.kcal, price: food.price };
+  const kcal = val.kcal || food.kcal;
+  const price = (val.price != null && val.price !== 0) ? val.price : food.price;
+  const specStr = [sp.size, sp.sweetness, sp.temp, (sp.toppings || []).join('+')].filter(Boolean).join('/') || '默认规格';
+  closeSheet();
+  await recordFood({
+    id: food.id, name: food.name, kcal, price,
+    shop: food.shop || food.brand || '', category: food.category || '外卖',
+    portion: specStr, photo: food.photo, macros: estimateMacros(kcal)
+  }, defaultMeal());
+  await appendSpecLedger(UFLOW.shopId, food.name, sp, kcal, price);
+  toast('已记入今日三餐 📝', 'green');
+  rerender();
+});
+registerAction('uflow:fav', async () => {
+  const food = UFLOW.food;
+  await upsertShopFood(food.name, food.kcal, food.price, food.shop || food.brand || '', UFLOW.shopId);
+  toast(`已收藏「${food.name}」⭐`, 'brand');
+  closeSheet();
+});
+
 function computeBill() {
   const it = BILL.item;
   const S = itemSpecs(it);
@@ -446,6 +542,7 @@ registerAction('spec:record', async () => {
   const shop = BILL.shop;
   const isDrink = BILL.isDrink;
   await saveSpecMem({ shopId: shop.id, name: BILL.item.name, sweetness: BILL.sweetness, temp: BILL.temp, size: BILL.size, toppings: BILL.toppings.slice(), portion: BILL.portion, spice: BILL.spice });
+  await appendSpecLedger(shop.id, BILL.item.name, { sweetness: BILL.sweetness, temp: BILL.temp, size: BILL.size, toppings: BILL.toppings.slice(), portion: BILL.portion, spice: BILL.spice }, total.kcal, total.price);
   closeSheet();
   await recordFood({
     id: null, name: BILL.item.name, kcal: total.kcal, price: total.price,
@@ -503,6 +600,7 @@ registerAction('bill:do', async () => {
   const total = computeBill();
   const real = await getRealPrice(BILL.item, BILL.shop);
   await saveSpecMem({ shopId: BILL.shop.id, name: BILL.item.name, sweetness: BILL.sweetness, temp: BILL.temp, size: BILL.size, toppings: BILL.toppings.slice(), portion: BILL.portion, spice: BILL.spice });
+  await appendSpecLedger(BILL.shop.id, BILL.item.name, { sweetness: BILL.sweetness, temp: BILL.temp, size: BILL.size, toppings: BILL.toppings.slice(), portion: BILL.portion, spice: BILL.spice }, total.kcal, total.price);
   const order = {
     itemName: BILL.item.name, shopName: BILL.shop.name, shopEmoji: BILL.shop.emoji,
     specs: total.specs, totalKcal: total.kcal, totalPrice: total.price,
