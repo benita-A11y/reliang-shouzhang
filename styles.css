@@ -36,7 +36,7 @@
   --side-w-open: 200px;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro SC", "SF Pro Text", "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
 }
-* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
 html, body { height: 100%; }
 body {
   font-family: var(--font);
@@ -46,11 +46,17 @@ body {
   line-height: 1.5;
   overflow: hidden;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+  touch-action: pan-y;            /* 允许上下滑动，禁用双指/双击缩放 */
   -webkit-font-smoothing: antialiased;
 }
-button { font-family: inherit; border: none; background: none; cursor: pointer; color: inherit; font-size: inherit; }
-input, textarea, select { font-family: inherit; font-size: 15px; color: var(--text); }
-img { display: block; }
+button { font-family: inherit; border: none; background: none; cursor: pointer; color: inherit; font-size: inherit; touch-action: manipulation; }
+input, textarea, select { font-family: inherit; font-size: 15px; color: var(--text); touch-action: manipulation; -webkit-user-select: text; user-select: text; }
+img { display: block; -webkit-user-drag: none; pointer-events: none; }
+img.ph-wrap, .ph-wrap img, .crop-box img, #sheet-root img, #modal-root img, .food-card .fc-photo img, .hr-thumb img, .fl-photo img, .mi-photo img, .reco-photo img, .order-emoji, .edit-logo img, .shop-hero-logo img, .menu-photo img { pointer-events: auto; }
+a { -webkit-touch-callout: none; }
 ::-webkit-scrollbar { width: 0; height: 0; }
 
 /* ---------- 布局：左侧索引栏 + 右侧内容 ---------- */
@@ -269,8 +275,23 @@ img { display: block; }
 
 /* ---------- 首页改版：大圆环 / 食谱库入口 ---------- */
 .ring-wrap.lg { width: 240px; height: 240px; }
-.ring-wrap.lg .rc-num { font-size: 38px; }
+.ring-wrap.lg .rc-num { font-size: 44px; font-weight: 800; letter-spacing: -1px; }
 .ring-wrap.lg .rc-label { font-size: 13px; }
+/* ① 顶部信息区：日期 / 问候 / 打卡·记录 三行左对齐 */
+.home-head { margin-bottom: 14px; padding: 2px 2px 0; }
+.hh-date { font-size: 14px; font-weight: 700; color: var(--sub); letter-spacing: .3px; }
+.hh-greet { font-size: 21px; font-weight: 800; margin-top: 4px; letter-spacing: .2px; }
+.hh-meta { font-size: 13px; color: var(--sub); margin-top: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hh-dot { color: var(--sub2); }
+.hh-record { color: var(--brand); font-weight: 700; cursor: pointer; }
+/* ② 圆环卡：绝对居中（水平垂直）· 数字为第一视觉重心 */
+.home-ring { text-align: center; padding: 22px 18px 18px; }
+.home-ring .ring-wrap { margin: 0 auto; }
+.rc-num { line-height: 1; }
+.rc-num small { font-size: 15px; font-weight: 700; color: var(--sub); margin-left: 4px; }
+.rc-foot { font-size: 13px; font-weight: 700; margin-top: 14px; }
+/* ③ 三大营养素：与圆环间距 24pt */
+.macro-box { margin-top: 24px; padding: 0 2px; }
 .home-recipes { margin-top: 14px; cursor: pointer; padding: 15px 18px; }
 .home-recipes:active { transform: scale(.985); }
 .hr-head { display: flex; align-items: center; gap: 8px; font-size: 14.5px; }
@@ -292,6 +313,11 @@ img { display: block; }
 .rs-tag:first-child { margin-top: 4px; }
 .view-full { margin-top: 12px; padding: 9px; text-align: center; font-size: 13px; font-weight: 700; color: var(--brand); background: var(--brand-soft, rgba(94,92,230,.08)); border-radius: 12px; cursor: pointer; }
 .view-full:active { opacity: .75; }
+/* ④ 今日已吃：顶部细分割线 + 卡片 */
+.eaten-title { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--track); }
+.eaten-card { padding: 14px 16px; }
+.eaten-card .meal-block:first-child { margin-top: 0; }
+.eaten-card .meal-block { margin-top: 14px; }
 
 /* ---------- 首页：快速记录 ---------- */
 /* 首页状态卡：饮水 / 运动 / 体重 */
@@ -484,6 +510,37 @@ img { display: block; }
 .fc-meta { font-size: 10.5px; color: var(--sub); margin-top: 7px; }
 .fc-add { position: absolute; right: 10px; bottom: 10px; width: 34px; height: 34px; border-radius: 50%; background: var(--brand); color: #fff; border: 0; font-size: 20px; font-weight: 700; line-height: 1; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(94,92,230,.4); z-index: 3; }
 .fc-add:active { transform: scale(.9); }
+/* ---------- 食谱三层分类树（品牌 → 系列 → 产品 / 品类分组） ---------- */
+.brand-tree { margin-top: 4px; display: flex; flex-direction: column; gap: 12px; }
+.brand-group {
+  background: #fff; border-radius: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.06);
+  overflow: hidden; animation: pageIn .3s ease;
+}
+.bg-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 16px; cursor: pointer; user-select: none;
+}
+.bg-caret { font-size: 12px; color: var(--brand); width: 14px; text-align: center; flex-shrink: 0; transition: transform .18s; }
+.bg-name { font-size: 15px; font-weight: 800; flex: 1; min-width: 0; }
+.bg-count { font-size: 11px; color: var(--sub); font-weight: 600; flex-shrink: 0; }
+.bg-arrow { font-size: 13px; color: var(--brand); font-weight: 800; flex-shrink: 0; }
+.brand-group.collapsed > .bg-caret { transform: rotate(0deg); }
+.brand-group.collapsed > .series-group,
+.brand-group.collapsed > .sg-body { display: none; }
+.series-group { padding: 0 16px 8px 16px; }
+.sg-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 0; cursor: pointer; user-select: none;
+  border-top: 1px solid var(--track, #ECECF1);
+}
+.sg-caret { font-size: 11px; color: var(--brand); width: 12px; text-align: center; flex-shrink: 0; }
+.sg-name { font-size: 13px; font-weight: 700; flex: 1; min-width: 0; color: var(--ink); }
+.sg-count { font-size: 10.5px; color: var(--sub); font-weight: 600; flex-shrink: 0; }
+.series-group.collapsed > .sg-body { display: none; }
+.sg-body { padding-top: 4px; }
+.brand-group .food-grid { padding: 4px 16px 14px; gap: 12px; }
+.fg-item { margin-top: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.05); background: #fff; border-radius: 14px; padding: 10px 12px; }
+.fg-item:first-child { margin-top: 0; }
 .badge-new {
   position: absolute; top: 10px; left: 10px;
   background: linear-gradient(135deg, #FF9500, #FFB340);
@@ -513,8 +570,20 @@ img { display: block; }
   box-shadow: var(--shadow-soft);
   cursor: pointer;
   transition: transform .16s;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .shop-card:active { transform: scale(.985); }
+/* 品牌卡左侧图标位：48×48 圆角矩形，浅灰占位 + 🏪，支持图片 */
+.sc-icon {
+  width: 48px; height: 48px; border-radius: 8px;
+  background: #F2F2F7; flex-shrink: 0; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; line-height: 1;
+}
+.sc-icon img { width: 100%; height: 100%; object-fit: cover; }
+.sc-body { flex: 1; min-width: 0; }
 .sc-line1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .sc-brand { font-size: 16px; font-weight: 800; }
 .sc-rate { font-size: 12.5px; color: var(--sub); white-space: nowrap; flex-shrink: 0; }
