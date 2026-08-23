@@ -51,7 +51,6 @@ registerPage('home', async function (root) {
   root.innerHTML = `
     <div class="home-head">
       <div class="hh-date">${fmtDateCN(new Date())}</div>
-      <div class="hh-greet">${greetEmoji()} ${esc(greeting())}</div>
       <div class="hh-meta">
         ${streak > 0 ? `🔥 连续打卡 ${streak} 天` : '✨ 今天也要好好吃饭'}
         <span class="hh-dot">·</span>
