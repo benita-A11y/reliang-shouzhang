@@ -208,6 +208,8 @@ registerPage('shop', async function (root) {
     <div class="series-tabs">
       ${seriesList.map((s) => `<div class="series-tab ${SHOP_VIEW.series === s ? 'on' : ''}" data-action="shop:series" data-v="${s}">${s}</div>`).join('')}
     </div>
+    ${await shopUserFoodsHTML(shop)}
+    <div class="section-title" style="margin-top:18px">🛒 本店菜单<span class="small muted" style="font-weight:500">平台收录</span></div>
     <div class="menu-list">
       ${items.filter((it) => it.status !== '下架').map((it) => `
         <div class="menu-item" data-action="shop:item" data-i="${it._i}">
@@ -232,7 +234,6 @@ registerPage('shop', async function (root) {
           <button class="mi-more" data-action="item:menu" data-i="${it._i}">⋯</button>
         </div>`).join('')}
     </div>` : ''}
-    ${await shopUserFoodsHTML(shop)}
     <button class="btn block add-item-btn" data-action="shop:add">➕ 添加新品</button>
     <div class="section-title" style="margin-top:18px">🔥 为你推荐 <span class="small muted" style="font-weight:500">本店其他热销</span></div>
     <div class="rec-row">
