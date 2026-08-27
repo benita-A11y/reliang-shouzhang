@@ -80,8 +80,11 @@ async function init() {
 async function buildShopMap() {
   SHOP_MAP = {};
   [...BRANDS, ...SHOPS].forEach((s) => {
-    SHOP_MAP[s.id] = s;
-    s.items.forEach((it) => { it._shopId = s.id; it._shopName = s.name; it._shopEmoji = s.emoji; it._i = s.items.indexOf(it); });
+    // 深拷贝：SHOP_MAP 绝不能共享全局 BRANDS/SHOPS 的引用，否则 applyShopEdits 会直接篡改
+    // 平台常量，导致每次 rebuildShops 都重复 push 用户单品（越改越多份）。
+    const clone = JSON.parse(JSON.stringify(s));
+    SHOP_MAP[s.id] = clone;
+    clone.items.forEach((it) => { it._shopId = s.id; it._shopName = s.name; it._shopEmoji = s.emoji; it._i = clone.items.indexOf(it); });
   });
   await applyShopEdits();
 }
@@ -151,13 +154,30 @@ function closeModal() {
   // 关闭任意弹窗即视为已看过新手引导，避免每次打开都弹出引导挡住导航
   if (had && PROFILE && !PROFILE.onboarded) { PROFILE.onboarded = true; saveProfile(PROFILE); }
 }
-function toast(msg, type = '') {
+/* toast(msg, type, opts)
+ * opts.undo   : 撤销按钮文案（如「撤销」），存在时显示可点击按钮
+ * opts.onUndo : 点击撤销后的回调（恢复数据）
+ * opts.duration : 自动消失毫秒数（默认带撤销 5000，普通 1800） */
+function toast(msg, type = '', opts = null) {
   const t = document.createElement('div');
   t.className = 'toast ' + type;
-  t.textContent = msg;
+  const span = document.createElement('span');
+  span.textContent = msg;
+  t.appendChild(span);
+  let done = false;
+  const remove = () => { if (done) return; done = true; t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 300); };
+  if (opts && opts.undo) {
+    const btn = document.createElement('button');
+    btn.className = 't-act';
+    btn.type = 'button';
+    btn.textContent = opts.undo;
+    btn.addEventListener('click', (e) => { e.stopPropagation(); if (opts.onUndo) opts.onUndo(); remove(); });
+    t.appendChild(btn);
+    setTimeout(remove, opts.duration || 5000);
+  } else {
+    setTimeout(remove, 1800);
+  }
   $('#toast-root').appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; }, 1800);
-  setTimeout(() => t.remove(), 2200);
 }
 function confetti() {
   const host = $('#confetti-root');
