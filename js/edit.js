@@ -356,15 +356,28 @@ registerAction('edit:save-item', async () => {
 });
 registerAction('edit:del-item', async () => {
   const shop = SHOP_MAP[_ei.shopId];
+  const before = await getEdits();
+  const matchEk = (e) => e.kind === 'item' && e.shopId === _ei.shopId && (e.origName === _ei.origName || e.name === _ei.origName || ('item:' + _ei.shopId + '/' + _ei.origName) === e.ek);
+  const prev = before.find(matchEk);
   if (_ei.isAdded) {
     await delEdit('item:' + _ei.shopId + '/' + _ei.origName);
   } else {
     await saveEdit({ ek: 'item:' + _ei.shopId + '/' + _ei.origName, kind: 'item', shopId: _ei.shopId, origName: _ei.origName, status: 'deleted' });
   }
+  await loadFoods();
+  const orphanFoods = FOODS.filter((f) => f.name === _ei.origName && f.shop === shop.name && f.addedByUser);
+  for (const f of orphanFoods) await deleteFood(f.id);
   await rebuildShops();
   closeSheet();
   renderPage('shop');
-  toast('已删除该产品', 'brand');
+  toast('已删除该产品', 'brand', { undo: '撤销', onUndo: async () => {
+    if (prev) await saveEdit(Object.assign({}, prev));
+    for (const f of orphanFoods) await saveFood(f);
+    await loadFoods();
+    await rebuildShops();
+    renderPage('shop');
+    toast('已恢复 ✓', 'green');
+  }});
 });
 
 /* ============================================================
@@ -470,15 +483,30 @@ registerAction('item:toggle-down', async (el) => {
 registerAction('item:del', async (el) => {
   const shopId = el.dataset.id; const i = Number(el.dataset.i);
   const it = SHOP_MAP[shopId].items[i]; if (!it) return;
+  const shop = SHOP_MAP[shopId];
+  const before = await getEdits();
+  const matchEk = (e) => e.kind === 'item' && e.shopId === shopId && (e.origName === it.name || e.name === it.name || ('item:' + shopId + '/' + it.name) === e.ek);
+  const prev = before.find(matchEk);
   if (it._added) {
     await delEdit('item:' + shopId + '/' + it.name);
   } else {
     await saveEdit({ ek: 'item:' + shopId + '/' + it.name, kind: 'item', shopId, origName: it.name, status: 'deleted' });
   }
+  // 同步清理「我的食谱」中由该单品生成的食物，避免孤儿数据
+  await loadFoods();
+  const orphanFoods = FOODS.filter((f) => f.name === it.name && f.shop === shop.name && f.addedByUser);
+  for (const f of orphanFoods) await deleteFood(f.id);
   await rebuildShops();
   closeSheet();
   renderPage('shop');
-  toast('已删除该产品', 'brand');
+  toast('已删除该产品', 'brand', { undo: '撤销', onUndo: async () => {
+    if (prev) await saveEdit(Object.assign({}, prev));
+    for (const f of orphanFoods) await saveFood(f);
+    await loadFoods();
+    await rebuildShops();
+    renderPage('shop');
+    toast('已恢复 ✓', 'green');
+  }});
 });
 
 /* ============================================================
