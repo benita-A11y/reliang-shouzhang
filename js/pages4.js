@@ -507,10 +507,51 @@ registerAction('ai:test', async (el) => {
 });
 registerAction('prof:export', () => {
   openSheet(`
-    <div class="sheet-title">数据导出</div>
-    <div class="muted small" style="text-align:center;margin-bottom:14px">一键导出所有个人数据，JSON 或 CSV 任选</div>
+    <div class="sheet-title">数据备份</div>
+    <div class="muted small" style="text-align:center;margin-bottom:14px">建议定期导出备份。换手机或重装后可导入恢复，自定义数据（店铺 / 单品 / 规格记忆）也会一并保存。</div>
     <button class="btn primary block" data-action="prof:export-json" style="margin-bottom:10px">⬇️ 导出 JSON（完整数据）</button>
-    <button class="btn block" data-action="prof:export-csv">⬇️ 导出 CSV（记录明细）</button>`);
+    <button class="btn block" data-action="prof:export-csv" style="margin-bottom:10px">⬇️ 导出 CSV（记录明细）</button>
+    <button class="btn ghost block" data-action="prof:import-json">📥 导入备份（恢复）</button>`);
+});
+let _pendingImport = null;
+registerAction('prof:import-json', () => {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'application/json,.json';
+  Object.assign(input.style, { position: 'fixed', left: '-9999px', top: 0, width: '1px', height: '1px', opacity: 0 });
+  document.body.appendChild(input);
+  let done = false;
+  const cleanup = () => input.remove();
+  input.addEventListener('change', async () => {
+    if (done) return; done = true; cleanup();
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data || typeof data !== 'object' || data.app !== '热量手账') { toast('不是有效的热量手账备份文件', 'red'); return; }
+      _pendingImport = data;
+      openModal(`
+        <div class="modal-title">导入备份？</div>
+        <div class="modal-sub">将用备份中的记录覆盖本地同名数据（按 id / 日期匹配）。本地独有的数据不会被删除，先导出当前备份更安心。</div>
+        <div class="flex" style="justify-content:flex-end;gap:10px">
+          <button class="btn ghost" data-action="modal:close">取消</button>
+          <button class="btn primary" data-action="prof:import-go">开始导入</button>
+        </div>`);
+    } catch (e) { toast('文件读取失败，请确认是 JSON 备份', 'red'); }
+  }, { once: true });
+  input.addEventListener('cancel', () => { if (done) return; done = true; cleanup(); }, { once: true });
+  try { input.click(); } catch (e) { cleanup(); }
+});
+registerAction('prof:import-go', async () => {
+  const data = _pendingImport; _pendingImport = null;
+  if (!data) { toast('没有待导入的备份', 'red'); return; }
+  try {
+    await importAllData(data);
+    PROFILE = await loadProfile();
+    closeModal(); closeSheet();
+    rerender();
+    toast('导入成功 ✓ 数据已恢复', 'green');
+  } catch (e) { toast('导入失败：' + (e.message || '未知错误'), 'red'); }
 });
 registerAction('prof:export-json', async () => {
   const data = await exportAllData();
