@@ -264,15 +264,17 @@ registerAction('home:water-sub', async () => {
   rerender();
 });
 
-const SPORT_STATE = { name: null, met: 0, emoji: '🏃', minutes: 30 };
+const SPORT_STATE = { name: null, met: 0, emoji: '🏃', minutes: 30, editId: null };
+let WEIGHT_EDIT = null;
 async function estSportKcal() {
   const weights = await getWeights();
   const kg = Number(PROFILE.weight) || (weights.length ? weights[weights.length - 1].kg : null) || 60;
   return Math.round(SPORT_STATE.met * kg * (SPORT_STATE.minutes / 60));
 }
 function renderSportSheet() {
+  const editing = !!SPORT_STATE.editId;
   openSheet(`
-    <div class="sheet-title">🏃 记录运动</div>
+    <div class="sheet-title">${editing ? '✏️ 编辑运动' : '🏃 记录运动'}</div>
     <div class="field"><label>运动类型</label>
       <div class="chips">
         ${EXERCISE_PRESETS.map((e, i) => `
@@ -287,7 +289,7 @@ function renderSportSheet() {
       </div>
     </div>
     <div class="sport-est" id="sport-est">预计消耗 <b>${SPORT_STATE.name ? estSportKcalSync() : 0}</b> kcal</div>
-    <button class="btn primary block" data-action="sport:save" style="margin-top:14px">保存记录</button>
+    <button class="btn primary block" data-action="sport:save" style="margin-top:14px">${editing ? '保存修改' : '保存记录'}</button>
     <button class="btn ghost block" data-action="sheet:close" style="margin-top:8px">取消</button>`);
 }
 // 同步估算（用于 sheet 首屏渲染；实际值 sport:pick 后异步刷新）
@@ -305,6 +307,7 @@ registerAction('home:sport', async () => {
           <div class="fl-photo">${r.emoji || '🏃'}</div>
           <div class="fl-info"><div class="fl-name">${esc(r.name)} · ${r.minutes} 分钟</div>
             <div class="fl-meta">消耗 ${r.kcal}kcal</div></div>
+          <div class="fl-edit" data-action="sport:edit" data-id="${r.id}" title="修改">✎</div>
           <div class="fl-del" data-action="sport:del" data-id="${r.id}">✕</div>
         </div>`).join('')}
       <div class="hint" style="margin-top:4px">共消耗 <b style="color:var(--green)">${ex.kcal}kcal</b>，已计入今日可摄入额度 🔥</div>
@@ -315,7 +318,19 @@ registerAction('home:sport', async () => {
   if (!SPORT_STATE.name) { SPORT_STATE.name = EXERCISE_PRESETS[0].name; SPORT_STATE.met = EXERCISE_PRESETS[0].met; SPORT_STATE.emoji = EXERCISE_PRESETS[0].emoji; }
   renderSportSheet();
 });
-registerAction('home:sport-add', () => renderSportSheet());
+registerAction('home:sport-add', () => { SPORT_STATE.editId = null; renderSportSheet(); });
+registerAction('sport:edit', async (el) => {
+  const ex = (await getExercises()).find((e) => e.id === el.dataset.id);
+  if (!ex) return;
+  SPORT_STATE.editId = ex.id;
+  SPORT_STATE.name = ex.name;
+  SPORT_STATE.minutes = ex.minutes;
+  SPORT_STATE.emoji = ex.emoji || '🏃';
+  const ws = await getWeights();
+  const kg = Number(PROFILE.weight) || (ws.length ? ws[ws.length - 1].kg : 60) || 60;
+  SPORT_STATE.met = ex.minutes ? ex.kcal / (ex.minutes / 60) / kg : 0;
+  renderSportSheet();
+});
 registerAction('sport:del', async (el) => {
   const ex = (await getExercises()).find((e) => e.id === el.dataset.id);
   if (!ex) return;
@@ -347,50 +362,83 @@ registerAction('sport:min', async (el) => {
 registerAction('sport:save', async () => {
   if (!SPORT_STATE.name) { toast('请选择运动类型', 'red'); return; }
   const kcal = await estSportKcal();
-  await addExercise({ date: todayKey(), name: SPORT_STATE.name, minutes: SPORT_STATE.minutes, kcal, emoji: SPORT_STATE.emoji });
-  closeSheet();
-  toast(`已记录 ${SPORT_STATE.name} ${SPORT_STATE.minutes}分钟 -${kcal}kcal 🔥`, 'green');
-  rerender();
+  if (SPORT_STATE.editId) {
+    const existing = (await getExercises()).find((e) => e.id === SPORT_STATE.editId);
+    let undoEx = null;
+    if (existing) {
+      undoEx = Object.assign({}, existing);
+      existing.name = SPORT_STATE.name; existing.minutes = SPORT_STATE.minutes;
+      existing.kcal = kcal; existing.emoji = SPORT_STATE.emoji;
+      await putExercise(existing);
+    }
+    SPORT_STATE.editId = null;
+    closeSheet();
+    rerender();
+    toast(`已更新 ${SPORT_STATE.name} ${SPORT_STATE.minutes}分钟 -${kcal}kcal 🔥`, 'green',
+      undoEx ? { undo: '撤销', onUndo: async () => { await putExercise(undoEx); rerender(); toast('已恢复 ✓', 'green'); } } : undefined);
+  } else {
+    await addExercise({ date: todayKey(), name: SPORT_STATE.name, minutes: SPORT_STATE.minutes, kcal, emoji: SPORT_STATE.emoji });
+    closeSheet();
+    toast(`已记录 ${SPORT_STATE.name} ${SPORT_STATE.minutes}分钟 -${kcal}kcal 🔥`, 'green');
+    rerender();
+  }
 });
 
 /* 体重 */
 async function renderWeightSheet() {
   const weights = await getWeights();
   const recent = weights.slice(-10).reverse();
+  const editW = WEIGHT_EDIT ? (await getWeight(WEIGHT_EDIT)) : null;
+  const inputVal = editW ? editW.kg : '';
   openSheet(`
-    <div class="sheet-title">⚖️ 体重记录</div>
-    <div class="field"><label>今日体重（kg）</label>
-      <input class="input" type="number" id="weight-input" step="0.1" min="20" max="300" placeholder="${PROFILE.weight ? '当前 ' + PROFILE.weight : '如 60.5'}">
+    <div class="sheet-title">${editW ? '✏️ 编辑体重' : '⚖️ 体重记录'}</div>
+    <div class="field"><label>${editW ? editW.date + ' 的体重（kg）' : '今日体重（kg）'}</label>
+      <input class="input" type="number" id="weight-input" step="0.1" min="20" max="300" value="${inputVal}" placeholder="${PROFILE.weight ? '当前 ' + PROFILE.weight : '如 60.5'}">
     </div>
-    <button class="btn primary block" data-action="weight:save">保存今日体重</button>
+    ${editW ? `<div class="hint" style="margin-top:4px">正在编辑 <b>${editW.date}</b> 的体重，保存后覆盖该日记录</div>` : ''}
+    <button class="btn primary block" data-action="weight:save">${editW ? '保存修改' : '保存今日体重'}</button>
     <div class="sheet-title small" style="margin-top:18px">📈 最近记录</div>
     ${recent.length ? recent.map((w) => `
       <div class="food-line">
         <div class="fl-photo">⚖️</div>
         <div class="fl-info"><div class="fl-name">${w.kg} kg</div>
           <div class="fl-meta">${w.date}${w.date === todayKey() ? ' · 今天' : ''}</div></div>
+        <div class="fl-edit" data-action="weight:edit" data-date="${w.date}" title="修改">✎</div>
         <div class="fl-del" data-action="weight:del" data-date="${w.date}">✕</div>
       </div>`).join('') : `<div class="muted small" style="padding:8px 2px">还没有记录，从今天开始记录吧</div>`}
     <div style="height:6px"></div>
     <button class="btn ghost block" data-action="sheet:close">取消</button>`);
 }
-registerAction('home:weight', () => renderWeightSheet());
+registerAction('home:weight', () => { WEIGHT_EDIT = null; renderWeightSheet(); });
+registerAction('weight:edit', async (el) => {
+  WEIGHT_EDIT = el.dataset.date;
+  await renderWeightSheet();
+});
 registerAction('weight:save', async () => {
   const input = $('#weight-input');
   const kg = Number(input && input.value);
   if (!kg || kg < 20 || kg > 300) { toast('请输入有效体重', 'red'); return; }
-  await addWeight(todayKey(), kg);
-  PROFILE.weight = kg;
-  await saveProfile(PROFILE);
+  const date = WEIGHT_EDIT || todayKey();
+  const prev = await getWeight(date);
+  const wasEdit = !!WEIGHT_EDIT;
+  await addWeight(date, kg);
+  if (date === todayKey()) { PROFILE.weight = kg; await saveProfile(PROFILE); }
+  WEIGHT_EDIT = null;
   closeSheet();
-  toast('体重已记录 ⚖️', 'green');
   rerender();
+  toast(wasEdit ? '体重已更新 ⚖️' : '体重已记录 ⚖️', 'green',
+    prev ? { undo: '撤销', onUndo: async () => {
+      await addWeight(date, prev.kg);
+      if (date === todayKey()) { PROFILE.weight = prev.kg; await saveProfile(PROFILE); }
+      rerender(); toast('已恢复 ✓', 'green');
+    } } : undefined);
 });
 registerAction('weight:del', async (el) => {
   const date = el.dataset.date;
   const w = await getWeight(date);
   if (!w) return;
   await delWeight(date);
+  WEIGHT_EDIT = null;
   await renderWeightSheet();
   toast('已删除体重记录', 'brand', { undo: '撤销', onUndo: async () => {
     await addWeight(date, w.kg);
