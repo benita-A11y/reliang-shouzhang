@@ -743,6 +743,8 @@ a { -webkit-touch-callout: none; }
 /* ---------- 居中弹窗 ---------- */
 #modal-root { position: fixed; top: 0; bottom: 0; right: 0; left: var(--side-w-open); z-index: 95; display: none; align-items: center; justify-content: center; padding: 24px; }
 #modal-root:not(:empty) { display: flex; }
+/* 移动端：侧栏收窄为左栏，弹窗改为全屏居中，避免被推到右侧裁切 */
+@media (max-width: 768px) { #modal-root { left: 0; padding: 16px; } }
 .modal-back { position: absolute; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(6px); animation: fadeIn .3s; }
 @keyframes fadeIn { from { opacity: 0; } }
 .modal-card {
@@ -771,7 +773,16 @@ a { -webkit-touch-callout: none; }
   animation: toastIn .35s cubic-bezier(.34,1.4,.64,1);
   white-space: nowrap;
   max-width: 86vw; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: auto;
+  display: flex; align-items: center;
 }
+.toast .t-act {
+  margin-left: 12px; padding: 2px 0 2px 12px;
+  border: none; border-left: 1px solid rgba(255,255,255,.35);
+  background: none; color: #FFE27A; font-weight: 800; font-size: 13.5px; cursor: pointer;
+  font-family: inherit;
+}
+.toast .t-act:active { opacity: .55; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(-14px) scale(.9); } }
 .toast.green { background: rgba(52,199,89,0.94); }
 .toast.red { background: rgba(255,59,48,0.94); }
