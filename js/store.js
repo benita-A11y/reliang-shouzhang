@@ -347,6 +347,7 @@ async function addExercise({ date, name, minutes, kcal, emoji }) {
   return ex;
 }
 async function delExercise(id) { await dbDel(IDB.exercises, id); }
+async function putExercise(ex) { await dbPut(IDB.exercises, ex); return ex; }
 async function getExerciseStats(date) {
   const list = await getExercisesByDate(date);
   let kcal = 0, minutes = 0;
