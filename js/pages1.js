@@ -187,9 +187,18 @@ registerAction('quick:record', async (el) => {
   toast('已记录 ' + food.name, 'green');
 });
 registerAction('rec:del', async (el) => {
+  const rec = (await getRecords()).find((r) => r.id === el.dataset.id);
+  if (!rec) return;
   await delRecord(el.dataset.id);
-  toast('已删除', 'brand');
+  await refreshRecordTotal();
   rerender();
+  toast('已删除 1 条记录', 'brand', { undo: '撤销', onUndo: async () => {
+    const { id, ...rest } = rec;
+    await addRecord(rest);
+    await refreshRecordTotal();
+    rerender();
+    toast('已恢复 ✓', 'green');
+  }});
 });
 
 /* ============================================================
@@ -258,9 +267,16 @@ registerAction('home:sport', async () => {
 });
 registerAction('home:sport-add', () => renderSportSheet());
 registerAction('sport:del', async (el) => {
+  const ex = (await getExercises()).find((e) => e.id === el.dataset.id);
+  if (!ex) return;
   await delExercise(el.dataset.id);
-  toast('已删除运动记录', 'brand');
   rerender();
+  toast('已删除运动记录', 'brand', { undo: '撤销', onUndo: async () => {
+    const { id, ...rest } = ex;
+    await addExercise(rest);
+    rerender();
+    toast('已恢复 ✓', 'green');
+  }});
 });
 registerAction('sport:pick', async (el) => {
   SPORT_STATE.name = el.dataset.name;
@@ -321,9 +337,16 @@ registerAction('weight:save', async () => {
   rerender();
 });
 registerAction('weight:del', async (el) => {
-  await delWeight(el.dataset.date);
-  toast('已删除', 'brand');
+  const date = el.dataset.date;
+  const w = await getWeight(date);
+  if (!w) return;
+  await delWeight(date);
   await renderWeightSheet();
+  toast('已删除体重记录', 'brand', { undo: '撤销', onUndo: async () => {
+    await addWeight(date, w.kg);
+    toast('已恢复 ✓', 'green');
+    await renderWeightSheet();
+  }});
 });
 
 /* ============================================================
@@ -1466,7 +1489,17 @@ registerAction('food:delete', async (el) => {
     </div>`);
 });
 registerAction('food:del-confirm', async (el) => {
+  const f = FOODS.find((x) => x.id === el.dataset.id);
   await deleteFood(el.dataset.id);
+  // 同步清理「觅食」中由该食物生成的店铺单品/规格账本，避免删不干净又冒出来
+  if (f && f.shop) {
+    const shopId = foodShopId(f);
+    const edits = await getEdits();
+    for (const e of edits) {
+      if (e.kind === 'item' && e.shopId === shopId && (e.origName === f.name || e.name === f.name)) await delEdit(e.ek);
+      if (e.ek === 'spec:' + shopId + '|' + f.name) await delEdit(e.ek);
+    }
+  }
   await loadFoods();
   closeModal();
   toast('已删除', 'brand');
