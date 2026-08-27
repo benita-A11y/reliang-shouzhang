@@ -489,15 +489,39 @@ function displayKcalRange(kcal, recordTotal) {
 
 /* ---------- 导出 ---------- */
 async function exportAllData() {
-  const [foods, records, orders, days, profile, contribs, exercises, weights, wheels] = await Promise.all([
+  const [foods, records, orders, days, profile, contribs, exercises, weights, wheels, edits] = await Promise.all([
     dbGetAll(IDB.foods), dbGetAll(IDB.records), dbGetAll(IDB.orders),
     dbGetAll(IDB.days), dbGet(IDB.profile, 'main'), dbGetAll(IDB.contribs),
-    dbGetAll(IDB.exercises), dbGetAll(IDB.weights), dbGetAll(IDB.wheels)
+    dbGetAll(IDB.exercises), dbGetAll(IDB.weights), dbGetAll(IDB.wheels),
+    dbGetAll(IDB.edits)
   ]);
   return {
     app: '热量手账', version: '1.1.0', exportedAt: nowISO(),
-    profile, foods, records, orders, days, contribs, exercises, weights, wheels
+    profile, foods, records, orders, days, contribs, exercises, weights, wheels, edits
   };
+}
+/* ---------- 导入（恢复备份） ----------
+ * 仅按 key 覆盖文件中存在的记录，不删除文件未包含的本地数据；
+ * 导入后重建店铺/食谱索引，保证用户自定义（edits 表）正确还原。 */
+async function importAllData(data) {
+  if (!data || typeof data !== 'object') throw new Error('备份文件格式不正确');
+  const map = [
+    ['foods', IDB.foods], ['records', IDB.records], ['orders', IDB.orders],
+    ['days', IDB.days], ['contribs', IDB.contribs], ['exercises', IDB.exercises],
+    ['weights', IDB.weights], ['wheels', IDB.wheels], ['edits', IDB.edits]
+  ];
+  for (const [key, store] of map) {
+    if (Array.isArray(data[key]) && data[key].length) await dbBulk(store, data[key]);
+  }
+  if (data.profile && data.profile.id) await dbPut(IDB.profile, data.profile);
+  await rebuildAppData();
+  return true;
+}
+/* 导入后刷新内存中的各项数据（与 init 保持一致的轻量重建） */
+async function rebuildAppData() {
+  await loadFoods();
+  await refreshRecordTotal();
+  await buildShopMap();
 }
 function downloadJSON(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
