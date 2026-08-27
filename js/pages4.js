@@ -295,6 +295,8 @@ registerPage('profile', async function (root) {
         <div class="li-main"><div class="li-title">我的日历</div><div class="li-sub">跳转到数据看板的日历视图</div></div><div class="li-arrow">›</div></div>
       <div class="list-item" data-action="day:indulge"><div class="li-icon" style="background:var(--pink-soft)">🎉</div>
         <div class="li-main"><div class="li-title">标记今天为放纵日</div><div class="li-sub">今天想好好吃一顿？给自己放个假</div></div><div class="li-arrow">›</div></div>
+      <div class="list-item" data-action="prof:onboard"><div class="li-icon" style="background:var(--purple-soft)">🎓</div>
+        <div class="li-main"><div class="li-title">新手引导</div><div class="li-sub">重新观看引导，重温各项功能（不会清空你的数据）</div></div><div class="li-arrow">›</div></div>
       <div class="list-item" data-action="prof:export"><div class="li-icon" style="background:var(--green-soft)">📤</div>
         <div class="li-main"><div class="li-title">数据导出</div><div class="li-sub">一键导出所有个人数据（JSON/CSV）</div></div><div class="li-arrow">›</div></div>
       <div class="list-item" data-action="prof:settings"><div class="li-icon" style="background:rgba(0,0,0,0.05)">⚙️</div>
@@ -505,6 +507,7 @@ registerAction('ai:test', async (el) => {
     el.textContent = old; el.disabled = false;
   }
 });
+registerAction('prof:onboard', () => { openOnboarding(); });
 registerAction('prof:export', () => {
   openSheet(`
     <div class="sheet-title">数据备份</div>
@@ -641,6 +644,12 @@ registerAction('contrib:submit', async () => {
 const ONB = { step: 1, data: {} };
 function openOnboarding() {
   ONB.step = 1;
+  // 预填当前档案：重新观看引导时不会清空已有数据
+  ONB.data = {
+    height: PROFILE.height || '', weight: PROFILE.weight || '', age: PROFILE.age || '',
+    gender: PROFILE.gender || 'female', activity: PROFILE.activity || 1.4, goal: PROFILE.goal || 0,
+    nickname: PROFILE.nickname || '', motto: PROFILE.motto || ''
+  };
   renderOnb();
 }
 function renderOnb() {
@@ -692,8 +701,8 @@ registerAction('onb:next', () => {
   renderOnb();
 });
 registerAction('onb:finish', async () => {
-  const name = ($('#o-name') && $('#o-name').value.trim()) || '手账同学';
-  const motto = ($('#o-motto') && $('#o-motto').value.trim()) || '慢慢来，比较快';
+  const name = (($('#o-name') && $('#o-name').value.trim())) || PROFILE.nickname || '手账同学';
+  const motto = (($('#o-motto') && $('#o-motto').value.trim())) || PROFILE.motto || '慢慢来，比较快';
   const d = ONB.data;
   PROFILE.nickname = name; PROFILE.motto = motto; PROFILE.onboarded = true;
   if (d.height && d.weight && d.age) {
