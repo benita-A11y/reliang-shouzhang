@@ -275,6 +275,7 @@ async function addRecord({ foodId, foodName, foodPhoto, kcal, price, shop, porti
   return rec;
 }
 async function delRecord(id) { await dbDel(IDB.records, id); }
+async function putRecord(rec) { await dbPut(IDB.records, rec); }
 
 function estimateMacros(kcal) {
   // 无营养数据时按常规比例估算（碳水50% / 蛋白15% / 脂肪35%）
@@ -435,6 +436,12 @@ async function addOrder(o) {
   const order = Object.assign({ id: uid(), createdAt: nowISO() }, o);
   await dbPut(IDB.orders, order);
   return order;
+}
+async function delOrder(id) { await dbDel(IDB.orders, id); }
+async function clearOrders() {
+  const all = await dbGetAll(IDB.orders);
+  for (const o of all) await dbDel(IDB.orders, o.id);
+  return all.length;
 }
 async function getBillStats() {
   const orders = await getOrders();
