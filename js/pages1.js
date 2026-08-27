@@ -99,6 +99,7 @@ registerPage('home', async function (root) {
               <div class="fl-info"><div class="fl-name">${esc(r.foodName)}</div>
                 <div class="fl-meta">${esc(r.portion || '')}${r.shop ? ' · ' + esc(r.shop) : ''}</div></div>
               <div class="fl-kcal">${r.kcal}kcal</div>
+              <div class="fl-edit" data-action="rec:edit" data-id="${r.id}" aria-label="修改">✎</div>
               <div class="fl-del" data-action="rec:del" data-id="${r.id}">✕</div>
             </div>`).join('') : `<div class="muted small" style="padding:6px 2px 10px">${m.k === 'breakfast' ? '🌅 记得吃早餐哦' : '→ 去觅食看看吃什么'}</div>`}
         </div>`).join('')}
@@ -198,6 +199,55 @@ registerAction('rec:del', async (el) => {
     await refreshRecordTotal();
     rerender();
     toast('已恢复 ✓', 'green');
+  }});
+});
+/* 记录就地编辑：改餐次 / 热量 / 份量，不必删了重记 */
+registerAction('rec:edit', async (el) => {
+  const rec = (await getRecords()).find((r) => r.id === el.dataset.id);
+  if (!rec) return;
+  window._recMeal = rec.meal;
+  openSheet(`
+    <div class="sheet-close" data-action="sheet:close">✕</div>
+    <div class="sheet-title">修改这条记录</div>
+    <div class="card" style="box-shadow:none;background:rgba(0,0,0,.04);margin-bottom:14px">
+      <div class="flex" style="gap:12px;align-items:center">
+        <div class="fl-photo" style="width:46px;height:46px;border-radius:14px">${photoHTML(rec)}</div>
+        <div><div class="fl-name" style="font-size:16px">${esc(rec.foodName)}</div>
+          <div class="muted small">${esc(rec.portion || '')}${rec.shop ? ' · ' + esc(rec.shop) : ''}</div></div>
+      </div>
+    </div>
+    <div class="field"><label>调整到哪一餐</label>
+      <div class="chips" id="rec-meal">${MEALS.map((m) => `<button type="button" class="chip ${rec.meal === m.k ? 'on' : ''}" data-action="rec:meal" data-v="${m.k}">${m.emoji} ${m.label}</button>`).join('')}</div>
+    </div>
+    <div class="field"><label>热量（kcal）<span class="req">*</span></label><input id="rec-kcal" type="number" value="${rec.kcal}"></div>
+    <div class="field"><label>份量（选填）</label><input id="rec-portion" type="text" placeholder="一碗 / 一份" value="${esc(rec.portion || '')}"></div>
+    <div style="display:flex;gap:10px;margin-top:6px">
+      <button class="btn ghost" style="flex:1" data-action="sheet:close">取消</button>
+      <button class="btn primary" style="flex:1.4" data-action="rec:save-edit" data-id="${rec.id}">保存修改</button>
+    </div>`);
+});
+registerAction('rec:meal', (el) => {
+  window._recMeal = el.dataset.v;
+  document.querySelectorAll('#rec-meal .chip').forEach((c) => c.classList.toggle('on', c.dataset.v === el.dataset.v));
+});
+registerAction('rec:save-edit', async (el) => {
+  const rec = (await getRecords()).find((r) => r.id === el.dataset.id);
+  if (!rec) return;
+  const before = Object.assign({}, rec);
+  const kcal = Number($('#rec-kcal').value);
+  if (!(kcal > 0)) { toast('热量要大于 0 哦', 'red'); return; }
+  rec.kcal = Math.round(kcal);
+  rec.meal = window._recMeal || rec.meal;
+  rec.portion = $('#rec-portion').value.trim() || rec.portion;
+  await putRecord(rec);
+  await refreshRecordTotal();
+  closeSheet();
+  rerender();
+  toast('已更新记录 ✓', 'green', { undo: '撤销', onUndo: async () => {
+    await putRecord(before);
+    await refreshRecordTotal();
+    rerender();
+    toast('已撤销修改', 'brand');
   }});
 });
 
@@ -1165,6 +1215,28 @@ registerAction('form:save', async (el) => {
   if (window._formUpdateCal) { food.calAdopted = true; }
   const synced = await saveFood(food);
   if (specFilled) await appendSpecLedger(foodShopId(food), food.name, food.spec, food.kcal, food.price);
+  /* 反向同步：食谱里改了名字/热量/价格 → 同步到「觅食」对应的单品（仅更新已存在的链接，不凭空新建） */
+  if (old && food.shop) {
+    const sid = foodShopId(food);
+    const edits = await getEdits();
+    const it = edits.find((e) => e.kind === 'item' && e.shopId === sid && (e.origName === old.name || e.name === old.name));
+    if (it) {
+      if (it.added) {
+        const newEk = 'item:' + sid + '/' + food.name;
+        const upd = Object.assign({}, it); delete upd.ek;
+        upd.name = food.name; upd.origName = food.name; upd.kcal = food.kcal; upd.price = food.price;
+        await delEdit(it.ek);
+        await saveEdit(Object.assign({ ek: newEk }, upd));
+        const oldSpec = 'spec:' + sid + '|' + old.name;
+        const specE = edits.find((e) => e.ek === oldSpec);
+        if (specE) { const su = Object.assign({}, specE); delete su.ek; await delEdit(oldSpec); await saveEdit(Object.assign({ ek: 'spec:' + sid + '|' + food.name }, su)); }
+      } else {
+        it.name = food.name; it.kcal = food.kcal; it.price = food.price;
+        await saveEdit(it);
+      }
+      await rebuildShops();
+    }
+  }
   await loadFoods();
   if (old && synced > 0) toast(`已同步 ${synced} 条历史记录的名称/照片 · 历史热量保持不变`, 'brand');
   const also = $('#also-record') && $('#also-record').checked;
@@ -1231,6 +1303,7 @@ function recipeCardHTML(f) {
         <div class="cat-tag">${catEmoji(f.category)} ${esc(f.category || '')}</div>
         ${f.brand ? `<div class="fc-meta">${esc(f.brand)}${f.series ? ' · ' + esc(f.series) : ''}</div>` : `<div class="fc-meta">${f.lastEatenAt ? '上次吃：' + daysAgoText(f.lastEatenAt.slice(0, 10)) : '📌 已录入'}</div>`}
       </div>
+      <button class="fc-more" data-action="food:edit" data-id="${f.id}" aria-label="编辑或删除">⋯</button>
       <button class="fc-add" data-action="food:quick" data-id="${f.id}" aria-label="快速记录">＋</button>
     </div>`;
 }
@@ -1292,6 +1365,7 @@ function renderRecipesList() {
                   <div class="fl-info"><div class="fl-name">${esc(f.name)}</div>
                     <div class="fl-meta">${dkr(f.kcal)}${f.price ? ' · ¥' + f.price : ''}</div></div>
                   <div class="fl-kcal" style="color:var(--brand);font-size:12px" data-action="food:quick" data-id="${f.id}">记录</div>
+                  <button class="fl-more" data-action="food:edit" data-id="${f.id}" aria-label="编辑或删除">⋯</button>
                 </div>`).join('')}
             </div>
           </div>`;}).join('')}
@@ -1490,18 +1564,22 @@ registerAction('food:delete', async (el) => {
 });
 registerAction('food:del-confirm', async (el) => {
   const f = FOODS.find((x) => x.id === el.dataset.id);
+  if (!f) return;
   await deleteFood(el.dataset.id);
   // 同步清理「觅食」中由该食物生成的店铺单品/规格账本，避免删不干净又冒出来
-  if (f && f.shop) {
-    const shopId = foodShopId(f);
-    const edits = await getEdits();
-    for (const e of edits) {
-      if (e.kind === 'item' && e.shopId === shopId && (e.origName === f.name || e.name === f.name)) await delEdit(e.ek);
-      if (e.ek === 'spec:' + shopId + '|' + f.name) await delEdit(e.ek);
-    }
+  const shopId = foodShopId(f);
+  const edits = await getEdits();
+  for (const e of edits) {
+    if (e.kind === 'item' && e.shopId === shopId && (e.origName === f.name || e.name === f.name)) await delEdit(e.ek);
+    if (e.ek === 'spec:' + shopId + '|' + f.name) await delEdit(e.ek);
   }
   await loadFoods();
   closeModal();
-  toast('已删除', 'brand');
   rerender();
+  toast('已删除「' + f.name + '」', 'brand', { undo: '撤销', onUndo: async () => {
+    await saveFood(Object.assign({}, f, { updatedAt: nowISO() }));
+    await loadFoods();
+    rerender();
+    toast('已恢复', 'green');
+  }});
 });
