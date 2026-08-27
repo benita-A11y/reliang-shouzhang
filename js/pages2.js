@@ -317,7 +317,7 @@ registerPage('bill', async function (root) {
       </div>
       <div class="hint" style="margin-top:8px">去「觅食」选个想吃的，先过把瘾，热量和钱都省下啦</div>
     </div>
-    <div class="section-title">📋 历史虚拟订单</div>
+    <div class="section-title flex-between">📋 历史虚拟订单 ${st.orders.length ? `<button class="link-btn" data-action="bill:clear">清空</button>` : ''}</div>
     ${st.orders.length ? renderOrderGroups(st.orders) : `
       <div class="empty-state" style="padding:34px 20px">
         <div class="es-icon">🧾</div>
@@ -346,6 +346,7 @@ function renderOrderGroups(orders) {
     <div class="order-group-title">${label}</div>
     ${groups[label].map((o) => `
       <div class="order-card">
+        <button class="order-del" data-action="order:del" data-id="${o.id}" aria-label="删除这条订单">✕</button>
         <div class="order-emoji">${o.shopEmoji || '🧋'}</div>
         <div class="order-info"><div class="order-name">${esc(o.itemName)}</div>
           <div class="order-shop">${esc(o.shopName || '')}${o.specs ? ' · ' + esc(o.specs) : ''}</div>
@@ -353,6 +354,44 @@ function renderOrderGroups(orders) {
         <div class="order-save">-${o.savedKcal}kcal<br>${o.priceSource === 'none' ? '未定价' : '-¥' + o.savedPrice.toFixed(2)}</div>
       </div>`).join('')}`).join('');
 }
+registerAction('order:del', async (el) => {
+  const o = (await getOrders()).find((x) => x.id === el.dataset.id);
+  if (!o) return;
+  openModal(`
+    <div class="modal-title">删除这条虚拟订单？</div>
+    <div class="modal-sub">「${esc(o.itemName)}」将从账单移除（不影响真实饮食记录）</div>
+    <div class="flex" style="justify-content:flex-end;gap:10px">
+      <button class="btn ghost" data-action="modal:close">取消</button>
+      <button class="btn red" data-action="order:del-confirm" data-id="${o.id}">删除</button>
+    </div>`);
+});
+registerAction('order:del-confirm', async (el) => {
+  const o = (await getOrders()).find((x) => x.id === el.dataset.id);
+  if (!o) return;
+  await delOrder(el.dataset.id);
+  closeModal();
+  renderPage('bill');
+  toast('已删除该订单', 'brand', { undo: '撤销', onUndo: async () => {
+    await addOrder(Object.assign({}, o));
+    renderPage('bill');
+    toast('已恢复', 'green');
+  }});
+});
+registerAction('bill:clear', async () => {
+  openModal(`
+    <div class="modal-title">清空全部虚拟账单？</div>
+    <div class="modal-sub">所有「假装点单」记录将移除，累计统计归零（不影响真实饮食记录）</div>
+    <div class="flex" style="justify-content:flex-end;gap:10px">
+      <button class="btn ghost" data-action="modal:close">取消</button>
+      <button class="btn red" data-action="bill:clear-go">确认清空</button>
+    </div>`);
+});
+registerAction('bill:clear-go', async () => {
+  const n = await clearOrders();
+  closeModal();
+  renderPage('bill');
+  toast('已清空 ' + n + ' 条账单', 'brand');
+});
 async function openBillFlow(item, shop) {
   const isDrink = shop.cat === '奶茶咖啡' || !!BRANDS.find((b) => b.id === shop.id);
   BILL.item = item; BILL.shop = shop; BILL.isDrink = isDrink;
