@@ -380,3 +380,112 @@ function nameSimilarity(a, b) {
   setA.forEach((c) => { if (setB.has(c)) hit++; });
   return hit / Math.max(setA.size, setB.size);
 }
+/* 中文字符 → 拼音（无声调），用于搜索的拼音匹配；由脚本生成，覆盖平台数据与常见饮食用字 */
+const PINYIN_MAP = {"一":"yi","丁":"ding","万":"wan","三":"san","不":"bu","东":"dong","丝":"si","个":"ge","中":"zhong","串":"chuan","丸":"wan","丼":"jing","乌":"wu","乐":"le","乡":"xiang","乳":"ru","于":"yu","云":"yun","五":"wu","京":"jing","亮":"liang","亲":"qin","仁":"ren","仔":"zai","他":"ta","仙":"xian","代":"dai","价":"jia","份":"fen","众":"zhong","伯":"bo","似":"si","低":"di","便":"bian","保":"bao","值":"zhi","兄":"xiong","克":"ke","兜":"dou","全":"quan","八":"ba","兰":"lan","关":"guan","其":"qi","具":"ju","典":"dian","养":"yang","冒":"mao","冬":"dong","冰":"bing","冷":"leng","冻":"dong","准":"zhun","凉":"liang","凯":"kai","刀":"dao","分":"fen","切":"qie","列":"lie","初":"chu","刺":"ci","削":"xiao","剥":"bao","力":"li","功":"gong","动":"dong","助":"zhu","劳":"lao","包":"bao","北":"bei","千":"qian","半":"ban","华":"hua","单":"dan","卖":"mai","博":"bo","卡":"ka","卷":"juan","厚":"hou","原":"yuan","县":"xian","参":"can","双":"shuang","叔":"shu","口":"kou","古":"gu","只":"zhi","可":"ke","台":"tai","叶":"ye","司":"si","吃":"chi","合":"he","名":"ming","后":"hou","吸":"xi","味":"wei","咖":"ka","咸":"xian","品":"pin","响":"xiang","售":"shou","啡":"fei","啤":"pi","啵":"bo","喜":"xi","喱":"li","四":"si","团":"tuan","国":"guo","圆":"yuan","土":"tu","圣":"sheng","块":"kuai","坚":"jian","城":"cheng","培":"pei","基":"ji","堂":"tang","堡":"bao","士":"shi","外":"wai","多":"duo","大":"da","天":"tian","奇":"qi","奈":"nai","奏":"zou","套":"tao","奶":"nai","妇":"fu","妍":"yan","姬":"ji","子":"zi","字":"zi","孜":"zi","季":"ji","官":"guan","定":"ding","宝":"bao","宫":"gong","宴":"yan","对":"dui","寻":"xun","导":"dao","寿":"shou","小":"xiao","尘":"chen","尾":"wei","屎":"shi","展":"zhan","山":"shan","岛":"dao","峰":"feng","州":"zhou","工":"gong","巧":"qiao","巨":"ju","巴":"ba","布":"bu","帕":"pa","帝":"di","带":"dai","常":"chang","干":"gan","平":"ping","年":"nian","幸":"xing","幽":"you","库":"ku","底":"di","店":"dian","度":"du","廷":"ting","式":"shi","弟":"di","张":"zhang","弦":"xian","归":"gui","当":"dang","御":"yu","微":"wei","德":"de","慕":"mu","战":"zhan","扇":"shan","手":"shou","打":"da","找":"zhao","抹":"mo","担":"dan","拉":"la","拌":"ban","择":"ze","拼":"pin","拿":"na","按":"an","挞":"ta","据":"ju","推":"tui","提":"ti","摇":"yao","摩":"mo","撒":"sa","数":"shu","文":"wen","斯":"si","新":"xin","方":"fang","无":"wu","早":"zao","时":"shi","明":"ming","昔":"xi","星":"xing","春":"chun","普":"pu","曲":"qu","更":"geng","月":"yue","有":"you","木":"mu","末":"mo","朵":"duo","李":"li","杏":"xing","村":"cun","条":"tiao","杨":"yang","杯":"bei","板":"ban","果":"guo","枝":"zhi","枪":"qiang","柚":"you","柠":"ning","柿":"shi","栀":"zhi","标":"biao","栖":"qi","校":"xiao","根":"gen","格":"ge","桂":"gui","桃":"tao","桥":"qiao","棒":"bang","椒":"jiao","椰":"ye","榴":"liu","樱":"ying","橘":"ju","橙":"cheng","檬":"meng","欧":"ou","歧":"qi","母":"mu","毛":"mao","气":"qi","水":"shui","汉":"han","汤":"tang","沌":"dun","沙":"sha","沫":"mo","河":"he","油":"you","治":"zhi","泉":"quan","法":"fa","泡":"pao","波":"bo","泥":"ni","浆":"jiang","浇":"jiao","测":"ce","海":"hai","消":"xiao","淀":"dian","淇":"qi","淋":"lin","淡":"dan","混":"hun","清":"qing","温":"wen","满":"man","演":"yan","潘":"pan","灌":"guan","炒":"chao","炮":"pao","炸":"zha","点":"dian","炼":"lian","烤":"kao","烧":"shao","烫":"tang","热":"re","焖":"men","焦":"jiao","然":"ran","煎":"jian","照":"zhao","煮":"zhu","煲":"bao","熟":"shu","燕":"yan","片":"pian","牌":"pai","牙":"ya","牛":"niu","特":"te","猕":"mi","猪":"zhu","猴":"hou","玉":"yu","王":"wang","玛":"ma","玫":"mei","珍":"zhen","珠":"zhu","瑞":"rui","瑰":"gui","瓜":"gua","甘":"gan","甜":"tian","生":"sheng","用":"yong","田":"tian","番":"fan","白":"bai","百":"bai","的":"de","皮":"pi","盐":"yan","盒":"he","盖":"gai","相":"xiang","眼":"yan","石":"shi","矿":"kuang","码":"ma","破":"po","碗":"wan","碧":"bi","示":"shi","福":"fu","种":"zhong","称":"cheng","稞":"ke","章":"zhang","竹":"zhu","符":"fu","笼":"long","筒":"tong","简":"jian","米":"mi","类":"lei","粉":"fen","粥":"zhou","精":"jing","糕":"gao","糖":"tang","糙":"cao","糯":"nuo","系":"xi","素":"su","红":"hong","纯":"chun","纳":"na","线":"xian","细":"xi","经":"jing","绒":"rong","绝":"jue","绿":"lü","罗":"luo","羊":"yang","美":"mei","翅":"chi","老":"lao","肉":"rou","肚":"du","肠":"chang","肥":"fei","肯":"ken","胸":"xiong","能":"neng","脂":"zhi","脆":"cui","脉":"mai","腊":"la","腐":"fu","腿":"tui","臊":"sao","自":"zi","航":"hang","色":"se","节":"jie","芋":"yu","芒":"mang","芙":"fu","芝":"zhi","芥":"jie","芬":"fen","芭":"ba","花":"hua","芹":"qin","苏":"su","苹":"ping","茄":"qie","茉":"mo","茗":"ming","茴":"hui","茶":"cha","草":"cao","荔":"li","荞":"qiao","荤":"hun","莉":"li","莓":"mei","莱":"lai","莲":"lian","菇":"gu","菜":"cai","菠":"bo","萃":"cui","萄":"tao","萝":"luo","营":"ying","葡":"pu","蒜":"suan","蒲":"pu","蒸":"zheng","蓉":"rong","蓝":"lan","蔬":"shu","蕉":"jiao","蕾":"lei","薯":"shu","藏":"cang","藜":"li","虾":"xia","蛋":"dan","蛤":"ha","蛳":"si","蜂":"feng","蜜":"mi","螺":"luo","蟹":"xie","表":"biao","西":"xi","规":"gui","角":"jiao","认":"ren","评":"ping","词":"ci","诺":"nuo","豆":"dou","贝":"bei","账":"zhang","贴":"tie","超":"chao","身":"shen","轻":"qing","辣":"la","辰":"chen","达":"da","过":"guo","迪":"di","选":"xuan","都":"dou","酒":"jiu","酪":"lao","酱":"jiang","酸":"suan","酿":"niang","醇":"chun","醋":"cu","醒":"xing","重":"zhong","野":"ye","量":"liang","金":"jin","针":"zhen","钵":"bo","铁":"tie","铺":"pu","销":"xiao","锅":"guo","键":"jian","队":"dui","阳":"yang","阴":"yin","阿":"a","限":"xian","陨":"yun","雪":"xue","零":"ling","雾":"wu","露":"lu","霸":"ba","青":"qing","面":"mian","韭":"jiu","飘":"piao","食":"shi","餐":"can","饨":"tun","饭":"fan","饮":"yin","饵":"er","饺":"jiao","饼":"bing","馄":"hun","馅":"xian","馍":"mo","香":"xiang","馥":"fu","马":"ma","骨":"gu","魔":"mo","鱼":"yu","鲈":"lu","鲍":"bao","鲜":"xian","鲤":"li","鲫":"ji","鲳":"chang","鳕":"xue","鳗":"man","鳝":"shan","鸡":"ji","鸭":"ya","鹿":"lu","麦":"mai","麻":"ma","黄":"huang","黎":"li","黑":"hei","默":"mo","龙":"long"};
+
+
+/* ---------- 拼音（搜索用）：字符串 → 全拼 / 首字母 ---------- */
+function pinyinOf(str) {
+  let out = '';
+  for (const ch of String(str || '')) {
+    if (/[\u4e00-\u9fa5]/.test(ch)) out += (PINYIN_MAP && PINYIN_MAP[ch]) || '';
+    else out += ch.toLowerCase();
+  }
+  return out;
+}
+function pyInitials(str) {
+  let out = '';
+  for (const ch of String(str || '')) {
+    if (/[\u4e00-\u9fa5]/.test(ch)) { const p = PINYIN_MAP && PINYIN_MAP[ch]; if (p) { out += p[0]; continue; } }
+    else out += ch.toLowerCase();
+  }
+  return out;
+}
+
+/* ---------- 编辑距离（Levenshtein），店铺名模糊匹配 ---------- */
+function editDistance(a, b) {
+  a = String(a || ''); b = String(b || '');
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  let prev = [];
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/* ---------- 搜索匹配：中文子串 / 全拼 / 拼音首字母，任一命中即匹配 ---------- */
+function textMatch(text, q) {
+  const query = String(q || '').trim().toLowerCase();
+  if (!query) return true;
+  const t = String(text || '');
+  if (t.toLowerCase().includes(query)) return true;
+  if (/^[a-z0-9\s]+$/.test(query)) {
+    if (pinyinOf(t).includes(query.replace(/\s/g, ''))) return true;
+    if (pyInitials(t).includes(query.replace(/\s/g, ''))) return true;
+  }
+  return false;
+}
+
+/* ---------- 高亮：中文直命中标区间；拼音命中反查对应汉字整段高亮 ---------- */
+function highlightMatch(text, q) {
+  const t = String(text || '');
+  const query = String(q || '').trim().toLowerCase();
+  if (!query) return esc(t);
+  const idx = t.toLowerCase().indexOf(query);
+  if (idx >= 0) {
+    return esc(t.slice(0, idx)) + '<mark class="hl">' + esc(t.slice(idx, idx + query.length)) + '</mark>' + esc(t.slice(idx + query.length));
+  }
+  const chars = Array.from(t);
+  const q2 = query.replace(/\s/g, '');
+  const cands = [{ arr: chars.map((c) => pinyinOf(c)) }, { arr: chars.map((c) => pyInitials(c)) }];
+  let best = null;
+  for (const c of cands) {
+    const at = c.arr.join('').indexOf(q2);
+    if (at >= 0 && (!best || at < best.at)) best = { arr: c.arr, at };
+  }
+  if (!best) return esc(t);
+  let acc = 0, s = -1, e = -1;
+  for (let i = 0; i < chars.length; i++) {
+    const segLen = (best.arr[i] || '').length;
+    const segStart = acc, segEnd = acc + segLen;
+    if (s < 0 && best.at < segEnd) s = i;
+    if (s >= 0 && best.at + q2.length > segStart) e = i;
+    acc = segEnd;
+  }
+  if (s < 0 || e < s) return esc(t);
+  return esc(chars.slice(0, s).join('')) + '<mark class="hl">' + esc(chars.slice(s, e + 1).join('')) + '</mark>' + esc(chars.slice(e + 1).join(''));
+}
+
+/* ---------- 店铺品类自动归类（按名称关键词） ---------- */
+function guessShopCat(name) {
+  const n = String(name || '');
+  if (!n) return '其他';
+  // 顺序有讲究：先判特征最强的品类，避免「面包」被「面」抢走
+  if (/超市|盒马|山姆|小象|便利|生鲜|菜市|果蔬/.test(n)) return '超市';
+  if (/面包|蛋糕|甜点|烘焙|西点|贝甜|度C/.test(n)) return '甜品面包';
+  if (/咖啡|瑞幸|库迪|星巴克|拿铁/.test(n)) return '奶茶咖啡';
+  if (/奶茶|果茶|奶绿|饮品|水吧|冰淇淋|茶/.test(n)) return '奶茶咖啡';
+  if (/汉堡|炸鸡|德克士|麦当劳|肯德基|华莱士|派乐/.test(n)) return '汉堡炸鸡';
+  if (/麻辣烫|麻辣拌|冒菜|钵钵|串串|香锅|火锅|烤鱼|烫菜/.test(n)) return '麻辣烫';
+  if (/烧烤|烤串|烤肉|串烧|铁板/.test(n)) return '烧烤';
+  if (/拉面|刀削|馄饨|饺子|包子|面馆|拌面|汤面|炒面|凉面|面食|面条|粉|米线|螺蛳|酸辣/.test(n)) return '粉面';
+  if (/轻食|沙拉|减脂|低脂|健康餐|能量碗/.test(n)) return '轻食沙拉';
+  if (/饭|套餐|盖码|煲仔|快餐|便当|黄焖|排骨|烧腊|食堂/.test(n)) return '米饭套餐';
+  return '其他';
+}
+
+/* ---------- 热度数值（排序用）：「月售 8.6w+」→ 数字，结合评分 ---------- */
+function hotScore(id) {
+  const h = (typeof SHOP_HOTNESS !== 'undefined' && SHOP_HOTNESS[id]) || null;
+  if (!h) return 0;
+  const m = String(h.sales || '').match(/([\d.]+)\s*w/i);
+  const sales = m ? parseFloat(m[1]) * 10000 : 0;
+  return sales * 10 + (Number(h.rating) || 0) * 100;
+}
