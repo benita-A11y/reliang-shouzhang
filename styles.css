@@ -251,6 +251,40 @@ a { -webkit-touch-callout: none; }
 .search svg { width: 17px; height: 17px; flex-shrink: 0; }
 .search input { flex: 1; background: none; border: none; outline: none; font-size: 15px; }
 .search input::placeholder { color: var(--sub2); }
+.search-clear { color: var(--sub2); font-size: 15px; padding: 2px 4px; cursor: pointer; flex-shrink: 0; }
+
+/* ---------- 搜索高亮 ---------- */
+mark.hl { background: linear-gradient(180deg, transparent 55%, rgba(94,92,230,.35) 55%); color: inherit; padding: 0 1px; border-radius: 2px; }
+
+/* ---------- 店铺名输入联想 ---------- */
+.shop-field { position: relative; }
+.shop-sug {
+  display: none; position: absolute; left: 0; right: 0; top: 100%;
+  margin-top: -8px; z-index: 30; max-height: 232px; overflow-y: auto;
+  background: var(--card); border-radius: 14px; box-shadow: 0 10px 28px rgba(0,0,0,.14);
+  padding: 4px; -webkit-overflow-scrolling: touch;
+}
+.shop-sug.on { display: block; }
+.sug-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 10px; cursor: pointer;
+}
+.sug-item:active { background: rgba(0,0,0,.05); }
+.sug-emoji { font-size: 17px; width: 22px; text-align: center; flex-shrink: 0; }
+.sug-name { flex: 1; font-size: 14.5px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sug-cat { font-size: 11.5px; color: var(--sub2); flex-shrink: 0; }
+.shop-hint { font-size: 12px; margin-top: 6px; min-height: 16px; line-height: 1.4; }
+.sh-ok { color: var(--green); font-weight: 600; }
+.sh-warn { color: var(--orange); font-weight: 600; }
+.sh-new { color: var(--brand); font-weight: 600; }
+
+/* ---------- 店铺卡片：我创建的标记 ---------- */
+.mine-tag {
+  display: inline-block; margin-left: 6px; padding: 1px 6px;
+  font-size: 10.5px; font-weight: 700; border-radius: 6px;
+  background: var(--brand-soft); color: var(--brand); vertical-align: middle;
+}
+.shop-item-sort { flex-wrap: wrap; }
 
 /* ---------- 圆环：自适应 + 绝对居中 ---------- */
 .ring-wrap {
