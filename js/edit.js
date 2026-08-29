@@ -80,21 +80,99 @@ function pickSpecValue(list, spec) {
 /* 为「我的食谱」里的食物推导它在觅食对应的 shopId（命中平台店铺用其 id，否则合成稳定 id） */
 function foodShopId(food) {
   const name = food.shop || food.brand;
+  if (!name) return '';
+  // 先在完整店铺表（含用户自建）里找，保证自建店铺也能被关联
+  if (typeof SHOP_MAP !== 'undefined' && SHOP_MAP) {
+    const m = Object.values(SHOP_MAP).find((s) => s.name === name);
+    if (m) return m.id;
+  }
   const hit = [...BRANDS, ...SHOPS].find((s) => s.name === name);
   if (hit) return hit.id;
-  let h = 0; const s = 'u:' + (name || food.name || '');
+  let h = 0; const s = 'u:' + name;
   for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return 'u' + h.toString(36);
+}
+
+/* ---------- 店铺智能匹配：精确 / 模糊（编辑距离≤2）/ 无匹配 ---------- */
+const SHOP_CAT_EMOJI = { '奶茶咖啡': '🧋', '汉堡炸鸡': '🍔', '麻辣烫': '🌶️', '粉面': '🍜', '米饭套餐': '🍚', '轻食沙拉': '🥗', '甜品面包': '🍰', '火锅': '🍲', '烧烤': '🍢', '快餐': '🍟', '超市': '🛒', '其他': '🏪' };
+function shopCatEmoji(cat) { return SHOP_CAT_EMOJI[cat] || '🏪'; }
+/* 所有可关联的店铺（平台 + 用户自建） */
+function allShops() { return typeof SHOP_MAP !== 'undefined' && SHOP_MAP ? Object.values(SHOP_MAP) : [...BRANDS, ...SHOPS]; }
+function matchShopByName(name) {
+  const q = String(name || '').trim();
+  if (!q) return { type: 'none', shop: null, candidates: [] };
+  const lowers = q.toLowerCase();
+  const maxD = q.length <= 2 ? 1 : 2;          // 短名收严，避免误匹配
+  const exact = allShops().find((s) => String(s.name).toLowerCase() === lowers);
+  if (exact) return { type: 'exact', shop: exact, candidates: [exact] };
+  const cands = [];
+  for (const s of allShops()) {
+    const sn = String(s.name).toLowerCase();
+    let d = editDistance(sn, lowers);
+    if (sn.includes(lowers) || lowers.includes(sn)) d = Math.min(d, 0.5); // 互为子串视为强候选
+    if (d > 0 && d <= maxD) cands.push({ s, d });
+  }
+  cands.sort((a, b) => a.d - b.d);
+  if (cands.length) return { type: 'fuzzy', shop: null, candidates: cands.slice(0, 3).map((x) => x.s) };
+  return { type: 'none', shop: null, candidates: [] };
+}
+/* 自动创建店铺（「我的食谱」录入新店名时），id 与 foodShopId 推导保持一致 */
+async function createUserShop(name, opts) {
+  const o = opts || {};
+  const id = foodShopId({ shop: name });
+  // 店铺名判不出品类时，再用食物名兜底（「其他」视为没判出来）
+  let cat = o.category || guessShopCat(name);
+  if (!cat || cat === '其他') cat = guessShopCat(o.foodName || '') || '其他';
+  await saveEdit({
+    ek: 'shopnew:' + id, kind: 'shopnew', shopId: id, name,
+    category: cat, emoji: o.emoji || shopCatEmoji(cat), color: '#5E5CE6',
+    flavor: o.flavor || '咸香', image: ''
+  });
+  await rebuildShops();
+  return SHOP_MAP[id] || null;
+}
+/* 正向同步：确保「我的食谱」的食物作为单品出现在对应店铺（已存在则更新数值） */
+async function syncFoodToShop(food) {
+  const shopId = foodShopId(food);
+  if (!shopId) return null;
+  await rebuildShops();
+  if (!SHOP_MAP[shopId]) return null;
+  const edits = await getEdits();
+  const ek = 'item:' + shopId + '/' + food.name;
+  const rec = edits.find((e) => e.kind === 'item' && e.shopId === shopId && (e.origName === food.name || e.name === food.name));
+  if (rec) {
+    rec.name = food.name; rec.origName = food.name;
+    rec.kcal = food.kcal; rec.price = food.price;
+    if (food.series) rec.series = food.series;
+    await saveEdit(rec);
+  } else {
+    await saveEdit({
+      ek, kind: 'item', shopId, origName: food.name, name: food.name,
+      kcal: food.kcal, price: food.price, series: food.series || guessSeries(food.name),
+      category: food.category, added: true
+    });
+  }
+  await rebuildShops();
+  return SHOP_MAP[shopId];
 }
 
 /* ---------- 把编辑合并进 SHOP_MAP ---------- */
 async function applyShopEdits() {
   const edits = await getEdits();
+  // 用户新建的店铺（「我的食谱」按店铺名自动创建）——先建店，后续单品编辑才能挂上
+  edits.filter((e) => e.kind === 'shopnew').forEach((e) => {
+    if (SHOP_MAP[e.shopId]) return;
+    SHOP_MAP[e.shopId] = {
+      id: e.shopId, name: e.name || '未命名店铺', emoji: e.emoji || shopCatEmoji(e.category),
+      cat: e.category || '其他', flavor: e.flavor || '咸香', color: e.color || '#5E5CE6',
+      image: e.image || '', items: [], _userShop: true
+    };
+  });
   // 店铺级
   edits.filter((e) => e.kind === 'shop').forEach((e) => {
     const s = SHOP_MAP[e.shopId]; if (!s) return;
     if (e.name != null) s.name = e.name;
-    if (e.category != null) s.category = e.category;
+    if (e.category != null) { s.cat = e.category; s.category = e.category; }
     if (e.emoji != null) s.emoji = e.emoji;
     if (e.color != null) s.color = e.color;
     if (e.image != null) s.image = e.image;
