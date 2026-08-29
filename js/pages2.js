@@ -6,10 +6,10 @@
 /* ============================================================
  * 觅食（外出/外卖决策参考）
  * ============================================================ */
-const HUNT = { tab: 'hot', cat: '全部', kcal: '不限', flavor: '不限' };
-const SHOP_VIEW = { id: null, series: '全部' };
+const HUNT = { tab: 'hot', cat: '全部', kcal: '不限', flavor: '不限', q: '', sort: 'hot' };
+const SHOP_VIEW = { id: null, series: '全部', sort: 'default' };
 /* 店铺分类 → emoji（覆盖 BRANDS 饮品品牌与 SHOPS 各品类，避免错误套用食物分类 CAT_EMOJI） */
-const SHOP_CAT = { '奶茶咖啡': '🧋', '汉堡炸鸡': '🍔', '麻辣烫': '🌶️', '粉面': '🍜', '米饭套餐': '🍚', '轻食沙拉': '🥗', '甜品面包': '🍰', '火锅': '🍲', '烧烤': '🍢', '快餐': '🍟' };
+const SHOP_CAT = { '奶茶咖啡': '🧋', '汉堡炸鸡': '🍔', '麻辣烫': '🌶️', '粉面': '🍜', '米饭套餐': '🍚', '轻食沙拉': '🥗', '甜品面包': '🍰', '火锅': '🍲', '烧烤': '🍢', '快餐': '🍟', '超市': '🛒', '其他': '🏪' };
 function shopCatLabel(cat) { return cat ? (SHOP_CAT[cat] || '🍽️') + ' ' + cat : '🧋 奶茶咖啡'; }
 
 registerPage('hunt', async function (root) {
@@ -31,6 +31,11 @@ registerPage('hunt', async function (root) {
       <div class="muted small" style="margin-top:10px">根据今日已摄入，你还有这些额度可以自由支配</div>
     </div>
     ${HUNT.tab !== 'fav' ? `
+    <div class="search" style="margin-bottom:12px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="hunt-search" placeholder="搜店铺 / 单品 · 支持拼音（如 mxbc）" value="${esc(HUNT.q)}" autocomplete="off">
+      ${HUNT.q ? '<span class="search-clear" data-action="hunt:clear">✕</span>' : ''}
+    </div>
     <div class="hunt-filter">
       <div class="filter-group">
         <div class="filter-title">热量</div>
@@ -47,37 +52,71 @@ registerPage('hunt', async function (root) {
       <div class="filter-group">
         <div class="filter-title">品类</div>
         <div class="filter-opts">
-          ${['全部', '奶茶咖啡', '汉堡炸鸡', '麻辣烫', '粉面'].map((k) => `<button class="chip ${HUNT.cat === k ? 'on' : ''}" data-action="hunt:cat" data-v="${k}">${k}</button>`).join('')}
+          ${['全部', '奶茶咖啡', '汉堡炸鸡', '麻辣烫', '粉面', '米饭套餐', '轻食沙拉', '甜品面包', '超市'].map((k) => `<button class="chip ${HUNT.cat === k ? 'on' : ''}" data-action="hunt:cat" data-v="${k}">${k}</button>`).join('')}
         </div>
       </div>
+    </div>
     </div>` : ''}
     <div class="tabs">
       ${[['hot', '🔥 附近热门'], ['cat', '📂 按品类找'], ['fav', '⭐ 我的收藏']].map(([k, t]) => `<div class="tab-item ${HUNT.tab === k ? 'on' : ''}" data-action="hunt:tab" data-v="${k}">${t}</div>`).join('')}
     </div>
+    ${HUNT.tab !== 'fav' ? `
+    <div class="chips" id="hunt-sort" style="margin-bottom:12px;opacity:.85">
+      ${[['hot', '🔥 热度优先'], ['kcal', '🥗 最低热量'], ['mine', '✨ 我创建的']].map(([v, t]) => `<button class="chip sm ${HUNT.sort === v ? 'on' : ''}" data-action="hunt:sort" data-v="${v}">${t}</button>`).join('')}
+    </div>` : ''}
     <div id="hunt-body">${await renderHuntBody()}</div>
     ${HUNT.tab !== 'fav' ? `<div id="hunt-ai"></div>` : ''}`;
+  // 搜索：只重渲染列表区，不重建 input（保护中文输入法组合）
+  const sbox = $('#hunt-search');
+  if (sbox) sbox.addEventListener('input', async (e) => {
+    HUNT.q = e.target.value;
+    const body = $('#hunt-body');
+    if (body) body.innerHTML = await renderHuntBody();
+    const clr = document.querySelector('#view .search-clear');
+    if (clr) clr.style.display = e.target.value ? '' : 'none';
+  });
   renderHuntAI();
 });
+registerAction('hunt:clear', () => { HUNT.q = ''; renderPage('hunt'); });
+registerAction('hunt:sort', (el) => { HUNT.sort = el.dataset.v; renderPage('hunt'); });
 
+/* 店铺品类（BRANDS 无 cat 字段，统一视为奶茶咖啡） */
+function shopCatOf(s) { return s.cat || '奶茶咖啡'; }
+/* 店铺最低热量：无单品的店铺排最后 */
+function shopMinKcal(s) {
+  return (s.items && s.items.length) ? Math.min.apply(null, s.items.map((i) => i.kcal)) : 99999;
+}
+/* 最低热量对应的单品名（用于卡片辅助决策） */
+function shopMinItem(s) {
+  if (!s.items || !s.items.length) return null;
+  let best = s.items[0];
+  for (const it of s.items) if (it.kcal < best.kcal) best = it;
+  return best;
+}
 function huntPool() {
-  const all = [...BRANDS, ...SHOPS];
-  let list = all.slice();
-  if (HUNT.tab === 'cat') {
-    if (HUNT.cat === '全部') list = all;
-    else if (HUNT.cat === '奶茶咖啡') list = BRANDS;
-    else list = SHOPS.filter((s) => s.cat === HUNT.cat);
+  // 用 SHOP_MAP：平台店铺 + 用户在「我的食谱」自动创建的店铺都能被搜到
+  let list = allShops().slice();
+  if (HUNT.tab === 'cat' || HUNT.cat !== '全部') {
+    if (HUNT.cat !== '全部') list = list.filter((s) => shopCatOf(s) === HUNT.cat);
   }
   if (HUNT.kcal !== '不限') {
-    if (HUNT.kcal === '≤300') list = list.filter((s) => Math.min(...s.items.map((i) => i.kcal)) <= 300);
+    if (HUNT.kcal === '≤300') list = list.filter((s) => shopMinKcal(s) <= 300);
     else {
       const [a, b] = HUNT.kcal.split('-').map(Number);
-      list = list.filter((s) => { const mn = Math.min(...s.items.map((i) => i.kcal)); return mn >= a && mn <= b; });
+      list = list.filter((s) => { const mn = shopMinKcal(s); return mn >= a && mn <= b; });
     }
   }
   if (HUNT.flavor !== '不限') {
     const f = HUNT.flavor.replace('的', '');
     list = list.filter((s) => s.flavor === f);
   }
+  // 搜索：店铺名 + 单品名，支持中文模糊与拼音（全拼 / 首字母）
+  const q = (HUNT.q || '').trim();
+  if (q) list = list.filter((s) => textMatch(s.name, q) || (s.items || []).some((it) => textMatch(it.name, q)));
+  // 排序：热度 / 最低热量 / 我创建的
+  if (HUNT.sort === 'kcal') list.sort((a, b) => shopMinKcal(a) - shopMinKcal(b));
+  else if (HUNT.sort === 'mine') list.sort((a, b) => (b._userShop ? 1 : 0) - (a._userShop ? 1 : 0));
+  else list.sort((a, b) => hotScore(b.id) - hotScore(a.id));
   return list;
 }
 async function renderHuntBody() {
@@ -94,21 +133,22 @@ async function renderHuntBody() {
       </div>`).join('');
   }
   const list = huntPool();
-  if (!list.length) return `<div class="empty-state"><div class="es-icon">🔍</div><div class="es-title">没有匹配的店铺</div><div class="es-sub">换个热量档位或口味试试</div></div>`;
+  const q = (HUNT.q || '').trim();
+  if (!list.length) return `<div class="empty-state"><div class="es-icon">🔍</div><div class="es-title">没有匹配的店铺</div><div class="es-sub">换个关键词、热量档位或口味试试</div></div>`;
   return list.map((s) => {
-    const minKcal = Math.min(...s.items.map((i) => i.kcal));
+    const mk = shopMinKcal(s), mi = shopMinItem(s);
     const hot = shopHotness(s.id);
-    const catLabel = shopCatLabel(s.cat);
+    const catLabel = shopCatLabel(shopCatOf(s));
     return `
     <div class="shop-card" data-action="hunt:shop" data-id="${s.id}">
-      <div class="sc-icon">${s.image ? `<img src="${s.image}" alt="">` : '🏪'}</div>
+      <div class="sc-icon">${s.image ? `<img src="${s.image}" alt="">` : (s.emoji || '🏪')}</div>
       <div class="sc-body">
         <div class="sc-line1">
-          <span class="sc-brand">${esc(s.name)}</span>
+          <span class="sc-brand">${q ? highlightMatch(s.name, q) : esc(s.name)}${s._userShop ? '<span class="mine-tag">我建的</span>' : ''}</span>
           <span class="sc-rate">⭐ ${hot.rating} · ${esc(hot.sales)}</span>
         </div>
-        <div class="sc-line2">${catLabel} · ${s.items.length}款单品</div>
-        <div class="sc-line3">最低热量 🔥 ${minKcal} kcal</div>
+        <div class="sc-line2">${catLabel} · ${(s.items || []).length} 款单品</div>
+        <div class="sc-line3">${mk === 99999 ? '🆕 还没有单品，去添加第一个吧' : `最低热量 🔥 <b>${mk}</b> kcal${mi ? ` · ${esc(mi.name)}` : ''}`}</div>
       </div>
     </div>`;
   }).join('');
@@ -123,7 +163,7 @@ async function renderHuntAI() {
   if (!box || HUNT.tab === 'fav') return;
   const stats = await getDayStats(todayKey());
   const analysis = analyzeDay(stats, PROFILE);
-  const pool = [...BRANDS, ...SHOPS].flatMap((s) => s.items.map((it) => ({
+  const pool = allShops().flatMap((s) => s.items.map((it) => ({
     name: it.name, kcal: it.kcal, price: it.price, emoji: s.emoji, shop: s.name, shopId: s.id,
     flavor: s.flavor, macros: it.macros
   })));
@@ -154,8 +194,10 @@ registerAction('hunt:fv', async (el) => {
 registerAction('hunt:ai-item', async (el) => {
   closeSheet();
   const shop = SHOP_MAP[el.dataset.shopid];
-  await recordFood({ id: null, name: el.dataset.name, kcal: Number(el.dataset.kcal), price: Number(el.dataset.price), shop: shop.name, category: '外卖', portion: '一份', macros: null }, defaultMeal());
-  await upsertShopFood(el.dataset.name, Number(el.dataset.kcal), Number(el.dataset.price), shop.name, el.dataset.shopid);
+  const kcal = Number(el.dataset.kcal), price = Number(el.dataset.price);
+  // 反向同步：先确保单品进入「我的食谱」，再带真实 id 记录 → 联动食用频率
+  const f = await ensureFoodFromShopItem(el.dataset.name, kcal, price, shop.name, el.dataset.shopid, { category: '外卖', portion: '一份' });
+  await recordFood({ id: f.id, name: f.name, kcal, price, shop: shop.name, category: f.category || '外卖', portion: '一份', photo: f.photo, macros: f.macros }, defaultMeal());
   await learnTasteSignal('hunt:ai-item', shopFlavorLabel(shop));
 });
 
@@ -187,8 +229,17 @@ registerPage('shop', async function (root) {
   const target = PROFILE.targetKcal || 1800;
   const remaining = Math.max(0, target - stats.kcal);
   const seriesList = ['全部', ...new Set(shop.items.map((it) => it.series || guessSeries(it.name)))];
-  const items = SHOP_VIEW.series === '全部' ? shop.items : shop.items.filter((it) => (it.series || guessSeries(it.name)) === SHOP_VIEW.series);
-  const catLabel = shopCatLabel(shop.cat);
+  // 用 slice() 复制一份再排序，避免改动 SHOP_MAP 里的原始顺序
+  let items = SHOP_VIEW.series === '全部' ? shop.items.slice() : shop.items.filter((it) => (it.series || guessSeries(it.name)) === SHOP_VIEW.series);
+  /* 单品排序：默认 / 我常吃（按食用次数）/ 热量高低 */
+  if (SHOP_VIEW.sort === 'kcal-asc') items.sort((a, b) => (a.kcal || 0) - (b.kcal || 0));
+  else if (SHOP_VIEW.sort === 'kcal-desc') items.sort((a, b) => (b.kcal || 0) - (a.kcal || 0));
+  else if (SHOP_VIEW.sort === 'freq') {
+    await loadFoods();
+    const cnt = (it) => { const f = FOODS.find((x) => x.name === it.name && x.shop === shop.name); return f ? (Number(f.eatCount) || 0) : 0; };
+    items.sort((a, b) => cnt(b) - cnt(a));
+  }
+  const catLabel = shopCatLabel(shopCatOf(shop));
   root.innerHTML = `
     <div class="shop-detail-head">
       <button class="shop-back" data-action="shop:back">←</button>
@@ -208,6 +259,10 @@ registerPage('shop', async function (root) {
     <div class="series-tabs">
       ${seriesList.map((s) => `<div class="series-tab ${SHOP_VIEW.series === s ? 'on' : ''}" data-action="shop:series" data-v="${s}">${s}</div>`).join('')}
     </div>
+    ${(shop.items || []).length > 1 ? `
+    <div class="chips shop-item-sort" style="margin:10px 0 4px;opacity:.85">
+      ${[['default', '🥇 默认'], ['freq', '🔥 我常吃'], ['kcal-asc', '🥗 热量低→高'], ['kcal-desc', '🍔 热量高→低']].map(([v, t]) => `<button class="chip sm ${SHOP_VIEW.sort === v ? 'on' : ''}" data-action="shop:sort" data-v="${v}">${t}</button>`).join('')}
+    </div>` : ''}
     ${await shopUserFoodsHTML(shop)}
     <div class="section-title" style="margin-top:18px">🛒 本店菜单<span class="small muted" style="font-weight:500">平台收录</span></div>
     <div class="menu-list">
@@ -248,6 +303,7 @@ registerPage('shop', async function (root) {
 });
 registerAction('shop:back', () => switchPage('hunt'));
 registerAction('shop:series', (el) => { SHOP_VIEW.series = el.dataset.v; renderPage('shop'); });
+registerAction('shop:sort', (el) => { SHOP_VIEW.sort = el.dataset.v; renderPage('shop'); });
 registerAction('shop:fav', async (el) => {
   const shop = SHOP_MAP[el.dataset.id];
   if (!shop) return;
@@ -263,8 +319,11 @@ registerAction('shop:item', (el) => {
 registerAction('hunt:item-record', async (el) => {
   const shop = SHOP_MAP[el.dataset.shopid];
   closeSheet();
-  await recordFood({ id: null, name: el.dataset.name, kcal: Number(el.dataset.kcal), price: Number(el.dataset.price), shop: shop.name, category: shop.cat === '奶茶咖啡' ? '饮品' : '外卖', portion: '一份', macros: null }, defaultMeal());
-  await upsertShopFood(el.dataset.name, Number(el.dataset.kcal), Number(el.dataset.price), shop.name, el.dataset.shopid);
+  const kcal = Number(el.dataset.kcal), price = Number(el.dataset.price);
+  const cat = shop.cat === '奶茶咖啡' ? '饮品' : '外卖';
+  // 反向同步：先确保单品进入「我的食谱」，再带真实 id 记录 → 联动食用频率
+  const f = await ensureFoodFromShopItem(el.dataset.name, kcal, price, shop.name, el.dataset.shopid, { category: cat, portion: '一份' });
+  await recordFood({ id: f.id, name: f.name, kcal, price, shop: shop.name, category: cat, portion: '一份', photo: f.photo, macros: f.macros }, defaultMeal());
   await learnTasteSignal('hunt:item-record', shopFlavorLabel(shop));
 });
 registerAction('hunt:item-bill', (el) => {
@@ -585,12 +644,15 @@ registerAction('spec:record', async () => {
   await saveSpecMem({ shopId: shop.id, name: BILL.item.name, sweetness: BILL.sweetness, temp: BILL.temp, size: BILL.size, toppings: BILL.toppings.slice(), portion: BILL.portion, spice: BILL.spice });
   await appendSpecLedger(shop.id, BILL.item.name, { sweetness: BILL.sweetness, temp: BILL.temp, size: BILL.size, toppings: BILL.toppings.slice(), portion: BILL.portion, spice: BILL.spice }, total.kcal, total.price);
   closeSheet();
+  const cat = isDrink ? '饮品' : '外卖';
+  // 反向同步：先确保单品进入「我的食谱」，再带真实 id 记录 → 联动食用频率
+  const f = await ensureFoodFromShopItem(BILL.item.name, total.kcal, total.price, shop.name, shop.id,
+    { category: cat, portion: total.specs, series: BILL.item.series, photo: BILL.item.image });
   await recordFood({
-    id: null, name: BILL.item.name, kcal: total.kcal, price: total.price,
-    shop: shop.name, category: isDrink ? '饮品' : '外卖',
-    portion: total.specs, macros: estimateMacros(total.kcal)
+    id: f.id, name: f.name, kcal: total.kcal, price: total.price,
+    shop: shop.name, category: cat,
+    portion: total.specs, photo: f.photo, macros: f.macros || estimateMacros(total.kcal)
   }, defaultMeal());
-  await upsertShopFood(BILL.item.name, total.kcal, total.price, shop.name, shop.id);
   await learnTasteSignal('spec:record', billFlavor());
 });
 registerAction('spec:fav', async () => {
