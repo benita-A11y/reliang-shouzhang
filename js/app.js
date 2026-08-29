@@ -402,6 +402,32 @@ async function upsertShopFood(name, kcal, price, shop, shopId) {
     });
   }
 }
+/* 反向同步（觅食 → 我的食谱）：确保单品已存在于食谱库并返回「带 id」的食物。
+   记录时带上真实 id，才能联动更新「上次食用时间 / 食用频率」；
+   已存在的食物不覆盖其热量，避免冲掉用户自定义（热量以食谱库为准）。 */
+async function ensureFoodFromShopItem(name, kcal, price, shopName, shopId, extra) {
+  const o = extra || {};
+  const s = SHOP_MAP[shopId];
+  await loadFoods();
+  let f = FOODS.find((x) => x.name === name && x.shop === shopName);
+  if (!f) {
+    const now = nowISO();
+    const category = o.category || (s && s.cat === '奶茶咖啡' ? '饮品' : '外卖');
+    f = {
+      id: uid(), name, kcal, price: price || 0, shop: shopName, brand: shopName,
+      series: o.series || guessSeries(name), portion: o.portion || '一份',
+      category, photo: o.photo || '', createdAt: now, updatedAt: now,
+      editCount: 0, macros: estimateMacros(kcal), eatCount: 0, source: '觅食点单'
+    };
+    await saveFood(f);
+  } else {
+    if (price != null && price > 0) f.price = price;
+    f.updatedAt = nowISO();
+    await saveFood(f);
+  }
+  await loadFoods();
+  return f;
+}
 
 /* ============================================================
  * 全局事件分发
