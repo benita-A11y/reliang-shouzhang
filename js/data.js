@@ -364,12 +364,57 @@ const PLATFORM_CALIBRATIONS = {
 
 /* ---------- 工具：根据名称关键词推测系列（AI 自动归类兜底） ---------- */
 function guessSeries(name) {
-  if (/拿铁|美式|咖啡|摩卡|玛奇朵|瑞纳冰|卡布奇诺/.test(name)) return '咖啡';
-  if (/芝士|奶茶|波波|奶绿|欧蕾|鲜芋|奶盖|宝藏|奶昔|厚乳/.test(name)) return '奶茶';
-  if (/柠檬|百香|葡萄|草莓|芒果|桃|柚|橙|西瓜|龙眼/.test(name)) return '果茶';
-  if (/限定|樱花|酒酿/.test(name)) return '季节限定';
-  if (/纯茶|四季春|乌龙|红茶|绿茶|茉莉/.test(name)) return '纯茶';
+  const n = String(name || '');
+  if (!n) return '其他';
+  // 饮品
+  if (/拿铁|美式|咖啡|摩卡|玛奇朵|瑞纳冰|卡布奇诺/.test(n)) return '咖啡';
+  if (/芝士|奶茶|波波|奶绿|欧蕾|鲜芋|奶盖|宝藏|奶昔|厚乳/.test(n)) return '奶茶';
+  if (/柠檬|百香|葡萄|草莓|芒果|桃|柚|橙|西瓜|龙眼/.test(n)) return '果茶';
+  if (/限定|樱花|酒酿/.test(n)) return '季节限定';
+  if (/纯茶|四季春|乌龙|红茶|绿茶|茉莉/.test(n)) return '纯茶';
+  // 顺序有讲究：「面包」含「面」，烘焙必须在面食之前判
+  if (/面包|蛋糕|甜点|泡芙|蛋挞|吐司|欧包|可颂|曲奇/.test(n)) return '烘焙甜点';
+  if (/汉堡|炸鸡|鸡腿堡|鸡翅|薯条|鸡块|鸡米花/.test(n)) return '汉堡炸鸡';
+  if (/麻辣烫|冒菜|香锅|钵钵|串串|麻辣拌/.test(n)) return '麻辣烫冒菜';
+  if (/饭|盖饭|盖码|煲仔|便当|套餐|黄焖|拌饭/.test(n)) return '米饭套餐';
+  if (/面|粉|米线|馄饨|饺子|包子|抄手|水饺|蒸饺|煎饺|小笼|汤包|烧麦/.test(n)) return '面食粉类';
+  if (/沙拉|轻食|藜麦|糙米|能量碗/.test(n)) return '轻食沙拉';
+  if (/粥|汤|豆浆|豆腐脑/.test(n)) return '汤粥';
+  if (/烧烤|烤串|烤肉|铁板|烤鱼/.test(n)) return '烧烤';
+  if (/水果|苹果|香蕉|橘子|橙子|葡萄|西瓜|莓/.test(n)) return '水果';
+  if (/坚果|瓜子|薯片|饼干|巧克力|糖果|辣条/.test(n)) return '零食';
   return '其他';
+}
+
+/* ---------- 自动生成搜索关键词：录入时一次打标，后期搜索「珍珠」「拿铁」都能命中 ---------- */
+const KEYWORD_TRAITS = [
+  // 饮品小料 / 口味
+  '珍珠', '椰果', '布丁', '芋圆', '燕麦', '奶盖', '芝士', '波波',
+  '拿铁', '美式', '摩卡', '咖啡', '奶茶', '果茶', '纯茶', '奶昔',
+  // 主要食材
+  '鸡胸', '牛肉', '猪肉', '羊肉', '鸡腿', '鸡翅', '鸡排', '虾', '鱼', '豆腐', '鸡蛋',
+  '蔬菜', '菠菜', '生菜', '西兰花', '土豆', '番茄', '玉米', '南瓜',
+  '藜麦', '糙米', '全麦', '荞麦', '燕麦',
+  // 主食形态
+  '米饭', '炒饭', '盖饭', '面条', '拉面', '炒面', '米粉', '米线', '馄饨', '饺子', '包子', '粥',
+  '汉堡', '炸鸡', '薯条', '披萨', '三明治', '面包', '蛋糕',
+  // 口味 / 属性
+  '麻辣', '香辣', '微辣', '中辣', '特辣', '不辣', '清淡', '低脂', '减脂', '高蛋白', '轻食', '沙拉'
+];
+function extractKeywords(o) {
+  const src = o || {};
+  const set = new Set();
+  const add = (v) => { const s = String(v == null ? '' : v).trim(); if (s) set.add(s); };
+  // 一级：直接可搜的字段
+  add(src.name); add(src.shop); add(src.brand); add(src.series); add(src.category);
+  // 二级：从名称里抽特征词（搜「珍珠」能找到「珍珠奶茶」）
+  const n = String(src.name || '');
+  for (const t of KEYWORD_TRAITS) if (n.includes(t)) add(t);
+  // 三级：规格也进关键词（搜「全糖」「冰」能命中）
+  const sp = src.spec || {};
+  [sp.sweetness, sp.temp, sp.size, sp.portion, sp.spice].forEach(add);
+  (sp.toppings || []).forEach(add);
+  return Array.from(set);
 }
 
 /* 相似度（简单字符重合度）用于名称消歧 */
