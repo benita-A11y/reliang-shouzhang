@@ -264,11 +264,12 @@ async function addRecord({ foodId, foodName, foodPhoto, kcal, price, shop, porti
     date: date || todayKey(), createdAt: nowISO(), synced: false
   };
   await dbPut(IDB.records, rec);
-  // 同步更新食物库“最近食用时间”
+  // 同步更新食物库“最近食用时间”与“食用频率”（反向同步：吃一次记一次）
   if (foodId) {
     const f = await getFood(foodId);
     if (f) {
       f.lastEatenAt = rec.createdAt;
+      f.eatCount = (Number(f.eatCount) || 0) + 1;
       await saveFood(f);
     }
   }
