@@ -1062,44 +1062,69 @@ window._formCompareId = null;
 
 function openManualForm(existing, compare) {
   const f = existing || {};
+  const sp = (f.spec && typeof f.spec === 'object') ? f.spec : {};
+  // 历史数据的规格「分量」归并到统一的分量字段
+  const portionVal = f.portion || sp.portion || '';
   openSheet(`
     <div class="sheet-title">${existing ? '编辑食物' : '快速录入'}</div>
+    <div class="form-tip">只填 3 项必填就能存；填「店铺名」会自动归档到觅食并帮你分好类。</div>
+
     <div class="field">
       <label>照片 <span class="req">*</span></label>
       <div class="photo-pick" data-action="form:photo">
         ${f.photo ? `<img src="${f.photo}"><div class="pp-x" data-action="form:photo-clear">✕</div>` : '<span>＋</span><span>拍照 / 相册</span>'}
       </div>
     </div>
+    <div class="field"><label>产品名称 <span class="req">*</span></label><input id="f-name" type="text" placeholder="如：珍珠奶茶 / 食堂麻辣香锅" value="${esc(f.name || '')}"></div>
+    <div class="field"><label>预估热量（kcal）<span class="req">*</span></label><input id="f-kcal" type="number" placeholder="如：580" value="${f.kcal != null ? f.kcal : ''}"></div>
+
     <div class="field shop-field">
-      <label>店铺名 <span class="muted small">选填 · 输入即联想，无匹配自动创建</span></label>
+      <label>店铺名 <span class="muted small">选填 · 输入即联想，自动归档</span></label>
       <input id="f-shop" type="text" placeholder="如：蜜雪冰城 / 学校食堂" value="${esc(f.shop || f.brand || '')}" autocomplete="off">
       <div id="shop-sug" class="shop-sug"></div>
       <div id="shop-hint" class="shop-hint"></div>
     </div>
-    <div class="field">
-      <label>系列 / 品类 <span class="muted small">选填 · 自动匹配已有</span></label>
-      <input id="f-series" type="text" list="series-opts" placeholder="如：奶茶 / 果茶 / 主食" value="${esc(f.series || '')}" autocomplete="off">
-      <datalist id="series-opts">${optList(seriesOptions())}</datalist>
+
+    <div class="archive-bar" data-action="form:archive-toggle">
+      <span class="ab-icon">🏷️</span>
+      <span class="ab-text" id="archive-text">自动归档</span>
+      <span class="ab-caret" id="archive-caret">▾</span>
     </div>
-    <div class="field"><label>产品名称 <span class="req">*</span></label><input id="f-name" type="text" placeholder="如：珍珠奶茶 / 食堂麻辣香锅" value="${esc(f.name || '')}"></div>
-    <div class="field"><label>预估热量（kcal）<span class="req">*</span></label><input id="f-kcal" type="number" placeholder="如：580" value="${f.kcal != null ? f.kcal : ''}"></div>
-    <div class="field"><label>价格（元，选填）</label><input id="f-price" type="number" step="0.1" placeholder="用于多巴胺账单省钱统计" value="${f.price != null ? f.price : ''}"></div>
-    <div class="field"><label>分量描述（选填）</label><input id="f-portion" type="text" placeholder="一碗 / 一份 / 大份 / 小份" value="${esc(f.portion || '')}"></div>
-    <div class="field">
-      <label>规格（选填 · 只填「当前这一份」的真实情况）</label>
-      <div class="spec-mini">
-        <div class="sm-row"><span class="sm-k">甜度</span><div class="chips" data-spec="sweetness">${['无糖','3分糖','5分糖','7分糖','全糖'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.sweetness === v ? 'on' : ''}" data-action="form:spec" data-g="sweetness" data-v="${v}">${v}</button>`).join('')}</div></div>
-        <div class="sm-row"><span class="sm-k">温度</span><div class="chips" data-spec="temp">${['热','温','常温','冰'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.temp === v ? 'on' : ''}" data-action="form:spec" data-g="temp" data-v="${v}">${v}</button>`).join('')}</div></div>
-        <div class="sm-row"><span class="sm-k">容量</span><div class="chips" data-spec="size">${['小杯','中杯','大杯'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.size === v ? 'on' : ''}" data-action="form:spec" data-g="size" data-v="${v}">${v}</button>`).join('')}</div></div>
-        <div class="sm-row"><span class="sm-k">小料</span><div class="chips" data-spec="toppings">${['珍珠','椰果','布丁','芋圆','燕麦'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.toppings && f.spec.toppings.includes(v) ? 'on' : ''}" data-action="form:spec" data-g="toppings" data-v="${v}">${v}</button>`).join('')}</div></div>
-        <div class="sm-row"><span class="sm-k">分量</span><div class="chips" data-spec="portion">${['小份','中份','大份'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.portion === v ? 'on' : ''}" data-action="form:spec" data-g="portion" data-v="${v}">${v}</button>`).join('')}</div></div>
-        <div class="sm-row"><span class="sm-k">口味</span><div class="chips" data-spec="spice">${['不辣','微辣','中辣','特辣'].map((v) => `<button type="button" class="chip sm ${f.spec && f.spec.spice === v ? 'on' : ''}" data-action="form:spec" data-g="spice" data-v="${v}">${v}</button>`).join('')}</div></div>
+    <div class="archive-body" id="archive-body">
+      <div class="field"><label>归类到 <span class="muted small">自动判断，可改</span></label>
+        <div class="chips" id="f-cat">
+          ${ALL_CATS.map((c) => `<button class="chip ${(f.category || '食堂') === c ? 'on' : ''}" data-action="form:cat" data-v="${c}">${c}</button>`).join('')}
+        </div>
+      </div>
+      <div class="field"><label>系列 / 品类 <span class="muted small">自动识别，可改</span></label>
+        <input id="f-series" type="text" list="series-opts" placeholder="如：奶茶 / 果茶 / 主食" value="${esc(f.series || '')}" autocomplete="off">
+        <datalist id="series-opts">${optList(seriesOptions())}</datalist>
+      </div>
+      <div class="field"><label>搜索关键词 <span class="muted small">自动生成，以后一搜就中</span></label>
+        <div class="chips" id="f-kw"></div>
       </div>
     </div>
+
+    <div class="field"><label>价格（元，选填）</label><input id="f-price" type="number" step="0.1" placeholder="用于多巴胺账单省钱统计" value="${f.price != null ? f.price : ''}"></div>
+
     <div class="field">
-      <label>分类</label>
-      <div class="chips" id="f-cat">
-        ${ALL_CATS.map((c) => `<button class="chip ${(f.category || '食堂') === c ? 'on' : ''}" data-action="form:cat" data-v="${c}">${c}</button>`).join('')}
+      <label>分量 <span class="muted small">选填</span></label>
+      <div class="portion-row">
+        <div class="chips" id="f-portion-chips">
+          ${['小份', '中份', '大份'].map((v) => `<button type="button" class="chip sm ${portionVal === v ? 'on' : ''}" data-action="form:portion" data-v="${v}">${v}</button>`).join('')}
+        </div>
+        <input id="f-portion" type="text" placeholder="自定义，如 一碗 / 两个 / 300g" value="${esc(portionVal)}" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>规格 <span class="muted small">选填 · 只显示这类食物用得上的</span></label>
+      <div class="spec-mini">
+        <div class="sm-row" data-spec-group="drink"><span class="sm-k">甜度</span><div class="chips" data-spec="sweetness">${['无糖', '3分糖', '5分糖', '7分糖', '全糖'].map((v) => `<button type="button" class="chip sm ${sp.sweetness === v ? 'on' : ''}" data-action="form:spec" data-g="sweetness" data-v="${v}">${v}</button>`).join('')}</div></div>
+        <div class="sm-row" data-spec-group="drink"><span class="sm-k">温度</span><div class="chips" data-spec="temp">${['热', '温', '常温', '冰'].map((v) => `<button type="button" class="chip sm ${sp.temp === v ? 'on' : ''}" data-action="form:spec" data-g="temp" data-v="${v}">${v}</button>`).join('')}</div></div>
+        <div class="sm-row" data-spec-group="drink"><span class="sm-k">容量</span><div class="chips" data-spec="size">${['小杯', '中杯', '大杯'].map((v) => `<button type="button" class="chip sm ${sp.size === v ? 'on' : ''}" data-action="form:spec" data-g="size" data-v="${v}">${v}</button>`).join('')}</div></div>
+        <div class="sm-row" data-spec-group="drink"><span class="sm-k">小料</span><div class="chips" data-spec="toppings">${['珍珠', '椰果', '布丁', '芋圆', '燕麦'].map((v) => `<button type="button" class="chip sm ${(sp.toppings || []).includes(v) ? 'on' : ''}" data-action="form:spec" data-g="toppings" data-v="${v}">${v}</button>`).join('')}</div></div>
+        <div class="sm-row" data-spec-group="food"><span class="sm-k">口味</span><div class="chips" data-spec="spice">${['不辣', '微辣', '中辣', '特辣'].map((v) => `<button type="button" class="chip sm ${sp.spice === v ? 'on' : ''}" data-action="form:spec" data-g="spice" data-v="${v}">${v}</button>`).join('')}</div></div>
       </div>
     </div>
     ${compare ? `<div class="card" style="box-shadow:none;background:var(--brand-soft);padding:14px;margin-bottom:6px">
@@ -1121,19 +1146,85 @@ function openManualForm(existing, compare) {
   window._formPhoto = f.photo || '';
   window._formCat = f.category || '食堂';
   window._formCatTouched = !!(existing && f.category && f.category !== '食堂');
+  window._formSeriesTouched = !!(existing && f.series);
   window._formSpec = f.spec ? JSON.parse(JSON.stringify(f.spec)) : { sweetness: '', temp: '', size: '', toppings: [], portion: '', spice: '' };
   window._formUpdateCal = false;
   window._formCompare = compare;
   window._formCompareId = existing ? existing.id : null;
   window._cropOriginal = f.photo || ''; // 编辑已有食物时，以当前图作为「重新裁剪」的源
-  // 店铺名：输入即联想 + 实时提示匹配结果（精确命中 / 有相似 / 将自动新建）
+  // 联动：店铺名联想 + 自动归档；产品名变化时自动识别系列与关键词
   const shopInput = $('#f-shop');
   if (shopInput) {
-    shopInput.addEventListener('input', () => renderShopSuggest(shopInput.value));
+    shopInput.addEventListener('input', () => { renderShopSuggest(shopInput.value); refreshFormByShop(); });
     shopInput.addEventListener('focus', () => renderShopSuggest(shopInput.value));
-    renderShopSuggest(shopInput.value);
   }
+  const nameInput = $('#f-name');
+  if (nameInput) nameInput.addEventListener('input', () => refreshFormByShop());
+  const seriesInput = $('#f-series');
+  if (seriesInput) seriesInput.addEventListener('input', () => { window._formSeriesTouched = true; renderFormKeywords(); });
+  renderShopSuggest(shopInput ? shopInput.value : '');
+  refreshFormByShop();
 }
+
+/* 根据「店铺名 + 产品名」实时推导归档：规格维度、分类、系列、关键词 */
+function refreshFormByShop() {
+  const shopVal = ($('#f-shop') ? $('#f-shop').value.trim() : '');
+  const nameVal = ($('#f-name') ? $('#f-name').value.trim() : '');
+  const shop = shopVal ? allShops().find((s) => s.name === shopVal) : null;
+  const shopCat = shop ? shopCatOf(shop) : (shopVal ? guessShopCat(shopVal) : '');
+  const isDrink = shopCat === '奶茶咖啡';
+  // 规格：饮品显示甜度/温度/容量/小料，其余显示口味
+  document.querySelectorAll('#sheet-root [data-spec-group]').forEach((row) => {
+    const g = row.getAttribute('data-spec-group');
+    row.style.display = (g === 'drink' ? isDrink : !isDrink) ? '' : 'none';
+  });
+  // 自动归类（用户没手动改过才覆盖）
+  if (!window._formCatTouched && shopCat) {
+    window._formCat = isDrink ? '饮品' : '外卖';
+    document.querySelectorAll('#f-cat .chip').forEach((c) => c.classList.toggle('on', c.dataset.v === window._formCat));
+  }
+  // 自动系列（用户没手动改过才覆盖）
+  const seriesEl = $('#f-series');
+  if (seriesEl && !window._formSeriesTouched) {
+    const g = guessSeries(nameVal);
+    seriesEl.value = (g && g !== '其他') ? g : '';
+  }
+  const textEl = $('#archive-text');
+  if (textEl) {
+    const catTxt = window._formCat || '未归类';
+    const seriesTxt = (seriesEl && seriesEl.value) || '待识别';
+    textEl.innerHTML = shopVal
+      ? `<b>${esc(shopVal)}</b> → ${shopCat ? shopCatEmoji(shopCat) + ' ' + esc(shopCat) : '🆕 新店铺'} · ${esc(catTxt)} · ${esc(seriesTxt)}`
+      : '填店铺名后自动归档（品类 / 分类 / 系列）';
+  }
+  renderFormKeywords();
+}
+/* 关键词预览：录入时就能看到以后能被哪些词搜到 */
+function renderFormKeywords() {
+  const box = $('#f-kw');
+  if (!box) return;
+  const kws = extractKeywords({
+    name: $('#f-name') ? $('#f-name').value.trim() : '',
+    shop: $('#f-shop') ? $('#f-shop').value.trim() : '',
+    series: $('#f-series') ? $('#f-series').value.trim() : '',
+    category: window._formCat,
+    spec: window._formSpec || {}
+  });
+  box.innerHTML = kws.length
+    ? kws.map((k) => `<span class="chip sm on kw-chip">${esc(k)}</span>`).join('')
+    : '<span class="muted small">填好名称和店铺后自动生成</span>';
+}
+registerAction('form:archive-toggle', () => {
+  const body = $('#archive-body'), caret = $('#archive-caret');
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  if (caret) caret.textContent = open ? '▴' : '▾';
+});
+registerAction('form:portion', (el) => {
+  const input = $('#f-portion');
+  if (input) input.value = el.dataset.v;
+  document.querySelectorAll('#f-portion-chips .chip').forEach((c) => c.classList.toggle('on', c === el));
+});
 
 /* 店铺名联想下拉：已有店铺优先展示（支持中文与拼音），并提示本次录入会发生什么 */
 function renderShopSuggest(val) {
@@ -1250,6 +1341,7 @@ registerAction('form:spec', (el) => {
       document.querySelectorAll(`#sheet-root .chips[data-spec="${g}"] .chip`).forEach((c) => c.classList.toggle('on', c === el));
     }
   }
+  renderFormKeywords();   // 规格也是搜索关键词，选完立刻能看到
 });
 registerAction('form:update-cal', () => {
   const cal = window._formCompare;
@@ -1366,6 +1458,11 @@ async function commitFoodSave(draft) {
   const sp = window._formSpec || {};
   const specFilled = !!(sp.sweetness || sp.temp || sp.size || (sp.toppings && sp.toppings.length) || sp.portion || sp.spice);
   if (specFilled) food.spec = { sweetness: sp.sweetness || '', temp: sp.temp || '', size: sp.size || '', toppings: (sp.toppings || []).slice(), portion: sp.portion || '', spice: sp.spice || '' };
+  // 自动生成搜索关键词：录入时一次打标，后期搜「珍珠」「拿铁」「鸡胸」都能命中
+  food.keywords = extractKeywords({
+    name: food.name, shop: food.shop, brand: food.brand,
+    series: food.series, category: food.category, spec: food.spec
+  });
   if (window._formUpdateCal) { food.calAdopted = true; }
   const synced = await saveFood(food);
   if (specFilled) await appendSpecLedger(foodShopId(food), food.name, food.spec, food.kcal, food.price);
@@ -1419,6 +1516,8 @@ let RECIPES_TAG = '';                                      // 自定义标签筛
 let RECIPES_OPEN = { brands: {}, series: {}, cats: {} };   // 品牌/系列/品类 折叠态（key→true 表示收起）
 /* 自定义标签（食谱管理/回顾用，可在食物详情里点选） */
 const FOOD_TAGS = ['⭐ 最爱', '🥗 减肥期', '💪 高蛋白', '🔁 常吃', '⚠️ 避雷'];
+/* 搜索关键词：新录入的食物已落库 keywords；老数据没有则惰性补算，不写库也能被搜到 */
+function foodKeywords(f) { return (f && f.keywords && f.keywords.length) ? f.keywords : extractKeywords(f); }
 /* 候选品牌名（食谱库已有 + 平台品牌/店铺），用于录入时自动匹配 */
 function brandOptions() {
   const set = new Set();
@@ -1472,9 +1571,13 @@ function renderRecipesList() {
   let list = FOODS.slice();
   if (filter !== '全部') list = list.filter((f) => f.category === filter);
   if (tag) list = list.filter((f) => (f.tags || []).includes(tag));
-  // 搜索：品牌 > 系列 > 产品，支持中文模糊 + 拼音（全拼 / 首字母）
-  if (ql) list = list.filter((f) =>
-    textMatch(f.brand || f.shop || '', ql) || textMatch(f.series || '', ql) || textMatch(f.name || '', ql));
+  // 搜索：名称 > 店铺 > 系列 > 自动关键词，支持中文模糊 + 拼音（全拼 / 首字母）
+  if (ql) list = list.filter((f) => {
+    if (textMatch(f.name || '', ql)) return true;
+    if (textMatch(f.brand || f.shop || '', ql)) return true;
+    if (textMatch(f.series || '', ql)) return true;
+    return foodKeywords(f).some((k) => textMatch(k, ql));
+  });
   if (sort === 'kcal-asc') list.sort((a, b) => (a.kcal || 0) - (b.kcal || 0));
   else if (sort === 'kcal-desc') list.sort((a, b) => (b.kcal || 0) - (a.kcal || 0));
   else if (sort === 'name') list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh'));
