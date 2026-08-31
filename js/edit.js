@@ -229,6 +229,8 @@ async function syncFoodsForEdit(shopName, origName, patch) {
     if (patch.price != null) f.price = patch.price;
     if (patch.category != null) f.category = patch.category;
     f.updatedAt = nowISO();
+    // 名称/分类变了 → 搜索关键词跟着重算，否则以后搜不到
+    f.keywords = extractKeywords({ name: f.name, shop: f.shop, brand: f.brand, series: f.series, category: f.category, spec: f.spec });
     await saveFood(f);
   }
 }
@@ -236,7 +238,29 @@ async function renameShopInFoods(oldName, newName) {
   if (oldName === newName) return;
   await loadFoods();
   const matches = FOODS.filter((f) => f.shop === oldName);
-  for (const f of matches) { f.shop = newName; f.updatedAt = nowISO(); await saveFood(f); }
+  for (const f of matches) {
+    f.shop = newName;
+    if (f.brand === oldName) f.brand = newName;
+    f.updatedAt = nowISO();
+    f.keywords = extractKeywords({ name: f.name, shop: f.shop, brand: f.brand, series: f.series, category: f.category, spec: f.spec });
+    await saveFood(f);
+  }
+}
+/* 把某道食物从它所属店铺里摘掉（删单品编辑 + 规格账本）。
+   换店铺 / 删除食物时都要调用，否则旧店里会残留同一个单品（孤儿）。 */
+async function unlinkFoodFromShop(food) {
+  if (!food || !food.shop) return 0;
+  const shopId = foodShopId(food);
+  if (!shopId) return 0;
+  const edits = await getEdits();
+  let n = 0;
+  for (const e of edits) {
+    const isItem = e.kind === 'item' && e.shopId === shopId && (e.origName === food.name || e.name === food.name);
+    const isSpec = e.ek === 'spec:' + shopId + '|' + food.name;
+    if (isItem || isSpec) { await delEdit(e.ek); n++; }
+  }
+  if (n) await rebuildShops();
+  return n;
 }
 
 /* ---------- 编辑图片（复用 crop.js） ---------- */
