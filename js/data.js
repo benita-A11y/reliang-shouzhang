@@ -466,8 +466,8 @@ function parseSmartInput(text, shopNames) {
   const out = { name: '', shop: '', kcal: null, price: null, spec: {}, portion: '' };
   let s = raw.replace(/\s+/g, ' ');
 
-  // ① 热量：380kcal / 380大卡 / 热量380
-  let m = s.match(/(\d{2,4}(?:\.\d+)?)\s*(?:kcal|大卡|千卡|卡路里|卡)/i)
+  // ① 热量：380kcal / 380大卡 / 热量380 / 380热量 / 300 热量
+  let m = s.match(/(\d{2,4}(?:\.\d+)?)\s*(?:kcal|大卡|千卡|卡路里|卡|热量)/i)
        || s.match(/(?:热量|约|大概|大约)\s*(\d{2,4}(?:\.\d+)?)/i);
   if (m) { const v = Number(m[1]); if (v > 0 && v <= 5000) { out.kcal = Math.round(v); s = s.replace(m[0], ' '); } }
 
