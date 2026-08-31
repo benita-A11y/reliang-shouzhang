@@ -204,21 +204,14 @@ registerAction('hunt:ai-item', async (el) => {
 /* ============================================================
  * 店铺详情页（美团/饿了么风格）
  * ============================================================ */
-/* 我的食谱 ↔ 觅食 数据闭环：展示用户自建且归属本品牌/店铺的食物 */
-async function shopUserFoodsHTML(shop) {
-  await loadFoods();
-  const mine = FOODS.filter((f) => (f.shop && f.shop === shop.name) || (f.brand && f.brand === shop.name));
-  if (!mine.length) return '';
-  return `
-    <div class="section-title" style="margin-top:18px">📖 我记录的（${mine.length}）<span class="small muted" style="font-weight:500">与觅食打通</span></div>
-    <div class="menu-list">
-      ${mine.map((f) => `
-        <div class="menu-item" data-action="userfood:open" data-id="${f.id}">
-          <div class="mi-photo">${photoHTML(f)}</div>
-          <div class="mi-info"><div class="mi-name">${esc(f.name)}</div><div class="mi-meta">¥${Number(f.price || 0).toFixed(2)} · ${f.kcal}kcal${f.series ? ' · ' + esc(f.series) : ''}</div></div>
-          <div class="mi-right"><button class="point-it" data-action="userfood:open" data-id="${f.id}">点它</button></div>
-        </div>`).join('')}
-    </div>`;
+function relTime(iso) {
+  if (!iso) return '';
+  const d = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (d < 0) return '刚刚';
+  if (d < 3600) return Math.max(1, Math.round(d / 60)) + '分钟前';
+  if (d < 86400) return Math.round(d / 3600) + '小时前';
+  if (d < 86400 * 30) return Math.round(d / 86400) + '天前';
+  return Math.round(d / 86400 / 30) + '个月前';
 }
 registerPage('shop', async function (root) {
   const shop = SHOP_MAP[SHOP_VIEW.id];
@@ -228,17 +221,28 @@ registerPage('shop', async function (root) {
   const stats = await getDayStats(todayKey());
   const target = PROFILE.targetKcal || 1800;
   const remaining = Math.max(0, target - stats.kcal);
+  // 加载食谱库，构建「本店名 → 食谱食物」映射（同名取食用次数最多 / 最近吃过那条），用于标记"我的"与食用数据
+  await loadFoods();
+  const foodMap = {};
+  for (const f of FOODS) {
+    if (f.shop !== shop.name) continue;
+    const prev = foodMap[f.name];
+    if (!prev || (Number(f.eatCount) || 0) > (Number(prev.eatCount) || 0) || (f.lastEatenAt || '') > (prev.lastEatenAt || '')) foodMap[f.name] = f;
+  }
   const seriesList = ['全部', ...new Set(shop.items.map((it) => it.series || guessSeries(it.name)))];
   // 用 slice() 复制一份再排序，避免改动 SHOP_MAP 里的原始顺序
   let items = SHOP_VIEW.series === '全部' ? shop.items.slice() : shop.items.filter((it) => (it.series || guessSeries(it.name)) === SHOP_VIEW.series);
-  /* 单品排序：默认 / 我常吃（按食用次数）/ 热量高低 */
+  /* 单品排序：默认 / 我常吃（按食用次数）/ 热量高低 / 最近吃（置顶） */
   if (SHOP_VIEW.sort === 'kcal-asc') items.sort((a, b) => (a.kcal || 0) - (b.kcal || 0));
   else if (SHOP_VIEW.sort === 'kcal-desc') items.sort((a, b) => (b.kcal || 0) - (a.kcal || 0));
   else if (SHOP_VIEW.sort === 'freq') {
-    await loadFoods();
-    const cnt = (it) => { const f = FOODS.find((x) => x.name === it.name && x.shop === shop.name); return f ? (Number(f.eatCount) || 0) : 0; };
-    items.sort((a, b) => cnt(b) - cnt(a));
+    items.sort((a, b) => ((foodMap[b.name] && Number(foodMap[b.name].eatCount)) || 0) - ((foodMap[a.name] && Number(foodMap[a.name].eatCount)) || 0));
+  } else if (SHOP_VIEW.sort === 'recent') {
+    items.sort((a, b) => ((foodMap[b.name] && foodMap[b.name].lastEatenAt) || '').localeCompare((foodMap[a.name] && foodMap[a.name].lastEatenAt) || ''));
   }
+  const mineCount = items.filter((it) => foodMap[it.name]).length;
+  const itemNames = new Set(shop.items.map((it) => it.name));
+  const orphans = FOODS.filter((f) => f.shop === shop.name && !itemNames.has(f.name));
   const catLabel = shopCatLabel(shopCatOf(shop));
   root.innerHTML = `
     <div class="shop-detail-head">
@@ -261,24 +265,40 @@ registerPage('shop', async function (root) {
     </div>
     ${(shop.items || []).length > 1 ? `
     <div class="chips shop-item-sort" style="margin:10px 0 4px;opacity:.85">
-      ${[['default', '🥇 默认'], ['freq', '🔥 我常吃'], ['kcal-asc', '🥗 热量低→高'], ['kcal-desc', '🍔 热量高→低']].map(([v, t]) => `<button class="chip sm ${SHOP_VIEW.sort === v ? 'on' : ''}" data-action="shop:sort" data-v="${v}">${t}</button>`).join('')}
+      ${[['default', '🥇 默认'], ['recent', '🕐 最近吃'], ['freq', '🔥 我常吃'], ['kcal-asc', '🥗 热量低→高'], ['kcal-desc', '🍔 热量高→低']].map(([v, t]) => `<button class="chip sm ${SHOP_VIEW.sort === v ? 'on' : ''}" data-action="shop:sort" data-v="${v}">${t}</button>`).join('')}
     </div>` : ''}
-    ${await shopUserFoodsHTML(shop)}
-    <div class="section-title" style="margin-top:18px">🛒 本店菜单<span class="small muted" style="font-weight:500">平台收录</span></div>
+    <div class="section-title" style="margin-top:18px">🛒 本店菜单<span class="small muted" style="font-weight:500">${mineCount > 0 ? '📌 已为你标记 ' + mineCount + ' 款' : '平台收录'}</span></div>
     <div class="menu-list">
-      ${items.filter((it) => it.status !== '下架').map((it) => `
+      ${items.filter((it) => it.status !== '下架').map((it) => {
+        const m = foodMap[it.name] || null;
+        const eaten = m ? (Number(m.eatCount) || 0) : 0;
+        const badge = m ? `<span class="mi-badge mine" title="在我的食谱里">📌</span>` + (eaten ? `<span class="mi-badge eaten" title="吃过 ${eaten} 次">🔥${eaten}</span>` : '') : '';
+        const photo = (m && m.photo) ? m.photo : (it.image || '');
+        const lastTxt = m && m.lastEatenAt ? ' · 🕐' + relTime(m.lastEatenAt) : '';
+        return `
         <div class="menu-item" data-action="shop:item" data-i="${it._i}">
-          <div class="mi-photo" style="--nc-soft:${hexA(shop.color || '#5E5CE6', 0.12)}">${it.image ? `<img src="${it.image}" alt="">` : shop.emoji}</div>
+          <div class="mi-photo" style="--nc-soft:${hexA(shop.color || '#5E5CE6', 0.12)}">${photo ? `<img src="${photo}" alt="">` : shop.emoji}</div>
           <div class="mi-info">
-            <div class="mi-name">${esc(it.name)}${it._edited ? '<span class="edited-tag">已编辑</span>' : ''}</div>
-            <div class="mi-meta">¥${it.price.toFixed(2)} · ${it.kcal}kcal · ${esc(it.series || guessSeries(it.name))}</div>
+            <div class="mi-name">${esc(it.name)}${it._edited ? '<span class="edited-tag">已编辑</span>' : ''} ${badge}</div>
+            <div class="mi-meta">¥${it.price.toFixed(2)} · ${it.kcal}kcal · ${esc(it.series || guessSeries(it.name))}${lastTxt}</div>
           </div>
           <div class="mi-right">
             <button class="mi-more" data-action="item:menu" data-i="${it._i}">⋯</button>
             <button class="point-it" data-action="shop:item" data-i="${it._i}">点它</button>
           </div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
     </div>
+    ${orphans.length ? `
+    <div class="section-title" style="margin-top:18px">📥 仅在我的食谱<span class="small muted" style="font-weight:500">还没收录进本店菜单</span></div>
+    <div class="menu-list">
+      ${orphans.map((f) => `
+        <div class="menu-item" data-action="userfood:open" data-id="${f.id}">
+          <div class="mi-photo">${photoHTML(f)}</div>
+          <div class="mi-info"><div class="mi-name">${esc(f.name)}</div><div class="mi-meta">¥${Number(f.price || 0).toFixed(2)} · ${f.kcal}kcal${f.eatCount ? ' · 🔥' + f.eatCount : ''}</div></div>
+          <button class="point-it" data-action="userfood:open" data-id="${f.id}">点它</button>
+        </div>`).join('')}
+    </div>` : ''}
     ${items.some((it) => it.status === '下架') ? `
     <div class="section-title" style="margin-top:18px">⤵️ 已下架（${items.filter((it) => it.status === '下架').length}）</div>
     <div class="menu-list">
