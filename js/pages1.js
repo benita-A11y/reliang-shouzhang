@@ -1591,6 +1591,7 @@ let RECIPES_FILTER = '全部';
 let RECIPES_Q = '';
 let RECIPES_SORT = 'recent';
 let RECIPES_TAG = '';                                      // 自定义标签筛选（空 = 不限）
+let RECIPES_FILTER_OPEN = false;                           // 折叠筛选开合态（默认收起）
 let RECIPES_OPEN = { brands: {}, series: {}, cats: {} };   // 品牌/系列/品类 折叠态（key→true 表示收起）
 /* 自定义标签（食谱管理/回顾用，可在食物详情里点选） */
 const FOOD_TAGS = ['⭐ 最爱', '🥗 减肥期', '💪 高蛋白', '🔁 常吃', '⚠️ 避雷'];
@@ -1815,6 +1816,21 @@ function renderRecipesList() {
   if (!list.length) return recipesEmpty(!!ql);
   return '<div class="food-grid">' + list.map((f) => recipeCardHTML(f)).join('') + '</div>';
 }
+/* 分类筛选：从用户实际食物动态生成，没填过的分类不显示 */
+function recipeCats() {
+  const set = new Set();
+  FOODS.forEach((f) => { if (f.category) set.add(f.category); });
+  return ['全部', ...Array.from(set).sort((a, b) => a.localeCompare(b, 'zh'))];
+}
+const RECIPE_SORT_LABEL = { recent: '最近食用', freq: '吃得最多', brand: '按店铺', cat: '按品类', new: '最新添加', 'kcal-asc': '热量低→高', 'kcal-desc': '热量高→低' };
+/* 折叠筛选摘要：把已选条件压成一行文案，默认收起时不占竖向空间 */
+function recipesFilterSummary() {
+  const parts = [];
+  if (RECIPES_FILTER !== '全部') parts.push(RECIPES_FILTER);
+  if (RECIPES_SORT !== 'recent') parts.push(RECIPE_SORT_LABEL[RECIPES_SORT] || RECIPES_SORT);
+  if (RECIPES_TAG) parts.push(RECIPES_TAG);
+  return parts.length ? parts.join(' · ') : '不限';
+}
 registerPage('recipes', async function (root) {
   await loadFoods();
   const filter = RECIPES_FILTER, q = RECIPES_Q, sort = RECIPES_SORT;
@@ -1832,15 +1848,33 @@ registerPage('recipes', async function (root) {
       ${q ? '<span class="search-clear" data-action="recipes:clear">✕</span>' : ''}
     </div>
     <div id="recipes-sug" class="search-sug"></div>
-    <div class="chips" id="recipes-chips" style="margin-bottom:10px">
-      ${['全部', '食堂', '外卖', '自制', '饮品', '零食', '水果'].map((c) => `<button class="chip ${filter === c ? 'on' : ''}" data-action="recipes:cat" data-v="${c}">${c}</button>`).join('')}
-    </div>
-    <div class="chips" id="recipes-sort" style="margin-bottom:10px;opacity:.85">
-      ${[['recent', '⏱️ 最近食用'], ['freq', '🔁 吃得最多'], ['brand', '🏷️ 按店铺'], ['cat', '🍱 按品类'], ['new', '✨ 最新添加'], ['kcal-asc', '热量低→高'], ['kcal-desc', '热量高→低']].map(([v, t]) => `<button class="chip sm ${sort === v ? 'on' : ''}" data-action="recipes:sort" data-v="${v}">${t}</button>`).join('')}
-    </div>
-    <div class="chips" id="recipes-tags" style="margin-bottom:16px;opacity:.85">
-      <button class="chip sm ${RECIPES_TAG === '' ? 'on' : ''}" data-action="recipes:tag" data-v="">🏷️ 全部标签</button>
-      ${FOOD_TAGS.map((t) => `<button class="chip sm ${RECIPES_TAG === t ? 'on' : ''}" data-action="recipes:tag" data-v="${t}">${t}</button>`).join('')}
+    <div class="hunt-filter">
+      <button class="filter-toggle" data-action="recipes:filter-toggle">
+        <span class="ft-label">🔎 筛选</span>
+        <span class="ft-summary">${recipesFilterSummary()}</span>
+        <span class="ft-caret ${RECIPES_FILTER_OPEN ? 'open' : ''}">▾</span>
+      </button>
+      <div class="filter-body ${RECIPES_FILTER_OPEN ? 'open' : ''}">
+        <div class="filter-group">
+          <div class="filter-title">分类</div>
+          <div class="filter-opts" id="recipes-chips">
+            ${recipeCats().map((c) => `<button class="chip ${filter === c ? 'on' : ''}" data-action="recipes:cat" data-v="${c}">${c}</button>`).join('')}
+          </div>
+        </div>
+        <div class="filter-group">
+          <div class="filter-title">排序</div>
+          <div class="filter-opts" id="recipes-sort">
+            ${[['recent', '⏱️ 最近食用'], ['freq', '🔁 吃得最多'], ['brand', '🏷️ 按店铺'], ['cat', '🍱 按品类'], ['new', '✨ 最新添加'], ['kcal-asc', '热量低→高'], ['kcal-desc', '热量高→低']].map(([v, t]) => `<button class="chip sm ${sort === v ? 'on' : ''}" data-action="recipes:sort" data-v="${v}">${t}</button>`).join('')}
+          </div>
+        </div>
+        <div class="filter-group">
+          <div class="filter-title">标签</div>
+          <div class="filter-opts" id="recipes-tags">
+            <button class="chip sm ${RECIPES_TAG === '' ? 'on' : ''}" data-action="recipes:tag" data-v="">🏷️ 全部标签</button>
+            ${FOOD_TAGS.map((t) => `<button class="chip sm ${RECIPES_TAG === t ? 'on' : ''}" data-action="recipes:tag" data-v="${t}">${t}</button>`).join('')}
+          </div>
+        </div>
+      </div>
     </div>
     <div id="recipes-body">${renderRecipesList()}</div>`;
   // 搜索：只更新列表区域，不重建 input（保护中文输入法组合）
@@ -1882,6 +1916,16 @@ registerAction('recipes:sort', (el) => {
 registerAction('recipes:tag', (el) => {
   RECIPES_TAG = el.dataset.v;
   renderPage('recipes');
+});
+/* 折叠筛选：仅切换开合，不整页重渲染（保留搜索框焦点与横向位置） */
+registerAction('recipes:filter-toggle', () => {
+  RECIPES_FILTER_OPEN = !RECIPES_FILTER_OPEN;
+  const body = document.querySelector('#view .filter-body');
+  const caret = document.querySelector('#view .ft-caret');
+  const sum = document.querySelector('#view .ft-summary');
+  if (body) body.classList.toggle('open', RECIPES_FILTER_OPEN);
+  if (caret) caret.classList.toggle('open', RECIPES_FILTER_OPEN);
+  if (sum) sum.textContent = recipesFilterSummary();
 });
 registerAction('bg:toggle', (el) => {
   const g = el.closest('.brand-group');
