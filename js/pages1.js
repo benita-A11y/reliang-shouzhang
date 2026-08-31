@@ -1075,7 +1075,12 @@ function openManualForm(existing, compare) {
         ${f.photo ? `<img src="${f.photo}"><div class="pp-x" data-action="form:photo-clear">✕</div>` : '<span>＋</span><span>拍照 / 相册</span>'}
       </div>
     </div>
-    <div class="field"><label>产品名称 <span class="req">*</span></label><input id="f-name" type="text" placeholder="如：珍珠奶茶 / 食堂麻辣香锅" value="${esc(f.name || '')}"></div>
+    <div class="field"><label>产品名称 <span class="req">*</span></label><input id="f-name" type="text" placeholder="如：珍珠奶茶 / 食堂麻辣香锅" value="${esc(f.name || '')}">
+      <div class="smart-paste-row">
+        <button type="button" class="chip xs" data-action="form:smartpaste">📋 智能粘贴</button>
+        <span class="muted small">粘贴「名称 店铺 热量」一行，自动识别填充</span>
+      </div>
+    </div>
     <div class="field"><label>预估热量（kcal）<span class="req">*</span></label><input id="f-kcal" type="number" placeholder="如：580" value="${f.kcal != null ? f.kcal : ''}"></div>
 
     <div class="field shop-field">
@@ -1161,7 +1166,17 @@ function openManualForm(existing, compare) {
     shopInput.addEventListener('focus', () => renderShopSuggest(shopInput.value));
   }
   const nameInput = $('#f-name');
-  if (nameInput) nameInput.addEventListener('input', () => refreshFormByShop());
+  if (nameInput) {
+    nameInput.addEventListener('input', () => refreshFormByShop());
+    // 智能粘贴：在名称框里直接粘贴一行「名称 店铺 热量」文本 → 自动拆解填充其余字段
+    nameInput.addEventListener('paste', (e) => {
+      const cd = e.clipboardData || window.clipboardData;
+      const text = cd ? cd.getData('text') : '';
+      if (text && text.trim().length > 3) {
+        if (smartFillFromText(text, false)) e.preventDefault();
+      }
+    });
+  }
   const seriesInput = $('#f-series');
   if (seriesInput) seriesInput.addEventListener('input', () => { window._formSeriesTouched = true; renderFormKeywords(); });
   renderShopSuggest(shopInput ? shopInput.value : '');
@@ -1216,6 +1231,52 @@ function renderFormKeywords() {
     ? kws.map((k) => `<span class="chip sm on kw-chip">${esc(k)}</span>`).join('')
     : '<span class="muted small">填好名称和店铺后自动生成</span>';
 }
+/* 智能粘贴：把规格 chips 的「选中态」与 window._formSpec 对齐（填充后即时反映） */
+function syncSpecChipsUI() {
+  const sp = window._formSpec || {};
+  document.querySelectorAll('#sheet-root .chip[data-action="form:spec"]').forEach((c) => {
+    const g = c.dataset.g, v = c.dataset.v;
+    const on = g === 'toppings' ? (sp.toppings || []).includes(v) : (sp[g] === v);
+    c.classList.toggle('on', !!on);
+  });
+}
+/* 智能粘贴核心：一行文本 → 自动填充表单（名称/店铺/热量/价格/规格/分量）
+   仅当解析出「有效信息」才填充；force=true 时（点按钮主动触发）即使只识别到名称也填充并提示 */
+function smartFillFromText(text, force) {
+  const shopNames = Array.from(new Set([
+    ...(allShops() || []).map((s) => s.name),
+    ...(FOODS || []).map((f) => f.shop).filter(Boolean)
+  ]));
+  const r = parseSmartInput(text, shopNames);
+  const hasData = r && (r.name || r.kcal || r.shop || r.price || Object.keys(r.spec || {}).length || r.portion);
+  if (!hasData) {
+    if (force) toast('没识别到可填充的信息 🤔', 'brand');
+    return false;
+  }
+  const nameEl = $('#f-name'); if (nameEl && r.name) nameEl.value = r.name;
+  if (r.kcal) { const e = $('#f-kcal'); if (e) e.value = r.kcal; }
+  if (r.price) { const e = $('#f-price'); if (e) e.value = r.price; }
+  if (r.shop) { const e = $('#f-shop'); if (e) { e.value = r.shop; renderShopSuggest(r.shop); } }
+  if (r.portion) {
+    const e = $('#f-portion'); if (e) e.value = r.portion;
+    document.querySelectorAll('#f-portion-chips .chip').forEach((c) => c.classList.toggle('on', c.dataset.v === r.portion));
+  }
+  if (r.spec) Object.assign(window._formSpec || (window._formSpec = {}), r.spec);
+  syncSpecChipsUI();
+  refreshFormByShop();   // 重新推导 品类/分类/系列/关键词
+  renderFormKeywords();
+  toast('📋 已智能识别并填充', 'green');
+  return true;
+}
+registerAction('form:smartpaste', async () => {
+  let text = '';
+  try { text = await navigator.clipboard.readText(); } catch (e) { text = ''; }
+  if (!text || !text.trim()) {
+    toast('请先复制一行文本，再点这里；或直接在名称框里粘贴', 'brand');
+    return;
+  }
+  smartFillFromText(text.trim(), true);
+});
 registerAction('form:archive-toggle', () => {
   const body = $('#archive-body'), caret = $('#archive-caret');
   if (!body) return;
