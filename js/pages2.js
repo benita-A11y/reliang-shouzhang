@@ -13,6 +13,7 @@ const SHOP_CAT = { '奶茶咖啡': '🧋', '汉堡炸鸡': '🍔', '麻辣烫': 
 function shopCatLabel(cat) { return cat ? (SHOP_CAT[cat] || '🍽️') + ' ' + cat : '🧋 奶茶咖啡'; }
 
 registerPage('hunt', async function (root) {
+  await loadFoods();   // 让搜索联想能命中「我的食谱」里的真实关键词
   const stats = await getDayStats(todayKey());
   const target = PROFILE.targetKcal || 1800;
   const remaining = Math.max(0, target - stats.kcal);
@@ -36,6 +37,7 @@ registerPage('hunt', async function (root) {
       <input id="hunt-search" placeholder="搜店铺 / 单品 · 支持拼音（如 mxbc）" value="${esc(HUNT.q)}" autocomplete="off">
       ${HUNT.q ? '<span class="search-clear" data-action="hunt:clear">✕</span>' : ''}
     </div>
+    <div id="hunt-sug" class="search-sug"></div>
     <div class="hunt-filter">
       <div class="filter-group">
         <div class="filter-title">热量</div>
@@ -68,17 +70,52 @@ registerPage('hunt', async function (root) {
     ${HUNT.tab !== 'fav' ? `<div id="hunt-ai"></div>` : ''}`;
   // 搜索：只重渲染列表区，不重建 input（保护中文输入法组合）
   const sbox = $('#hunt-search');
-  if (sbox) sbox.addEventListener('input', async (e) => {
-    HUNT.q = e.target.value;
-    const body = $('#hunt-body');
-    if (body) body.innerHTML = await renderHuntBody();
-    const clr = document.querySelector('#view .search-clear');
-    if (clr) clr.style.display = e.target.value ? '' : 'none';
-  });
+  if (sbox) {
+    sbox.addEventListener('input', async (e) => {
+      HUNT.q = e.target.value;
+      const body = $('#hunt-body');
+      if (body) body.innerHTML = await renderHuntBody();
+      const clr = document.querySelector('#view .search-clear');
+      if (clr) clr.style.display = e.target.value ? '' : 'none';
+      renderHuntSuggest(e.target.value);
+      // 停止输入 900ms 且长度≥2 → 记入搜索历史（与食谱页共用同一历史）
+      clearTimeout(window._huntHistTimer);
+      const v = e.target.value.trim();
+      if (v.length >= 2) window._huntHistTimer = setTimeout(() => pushSearchHistory(v), 900);
+    });
+    sbox.addEventListener('focus', () => renderHuntSuggest(sbox.value));
+  }
   renderHuntAI();
 });
 registerAction('hunt:clear', () => { HUNT.q = ''; renderPage('hunt'); });
 registerAction('hunt:sort', (el) => { HUNT.sort = el.dataset.v; renderPage('hunt'); });
+
+/* 觅食搜索联想：复用食谱库的统一联想（语义关联词 + 历史 + 库里热门），searchSuggestions 定义在 pages1 */
+function renderHuntSuggest(q) {
+  const box = $('#hunt-sug');
+  if (!box) return;
+  const sug = searchSuggestions(q);
+  if (!sug.items.length) { box.innerHTML = ''; box.classList.remove('on'); return; }
+  box.innerHTML = `
+    <div class="sug-head">${sug.title}${sug.clearable ? '<span class="sug-clear" data-action="hunt:clear-history">清除</span>' : ''}</div>
+    <div class="sug-wrap">${sug.items.map((w) => `<span class="sug-word" data-action="hunt:sug-pick" data-v="${esc(w)}">${highlightMatch(w, q)}</span>`).join('')}</div>`;
+  box.classList.add('on');
+}
+registerAction('hunt:sug-pick', (el) => {
+  const v = el.dataset.v;
+  HUNT.q = v;
+  pushSearchHistory(v);
+  const input = $('#hunt-search'); if (input) input.value = v;
+  const clr = document.querySelector('#view .search-clear'); if (clr) clr.style.display = '';
+  const box = $('#hunt-sug'); if (box) { box.innerHTML = ''; box.classList.remove('on'); }
+  const body = $('#hunt-body');
+  if (body) renderHuntBody().then((html) => { body.innerHTML = html; });
+});
+registerAction('hunt:clear-history', () => {
+  clearSearchHistory();
+  renderHuntSuggest('');
+  toast('已清除搜索历史', 'brand');
+});
 
 /* 店铺品类（BRANDS 无 cat 字段，统一视为奶茶咖啡） */
 function shopCatOf(s) { return s.cat || '奶茶咖啡'; }
