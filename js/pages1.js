@@ -1083,6 +1083,7 @@ function openManualForm(existing, compare) {
       <input id="f-shop" type="text" placeholder="如：蜜雪冰城 / 学校食堂" value="${esc(f.shop || f.brand || '')}" autocomplete="off">
       <div id="shop-sug" class="shop-sug"></div>
       <div id="shop-hint" class="shop-hint"></div>
+      ${!f.shop && PROFILE && PROFILE.lastShopName ? `<div class="mru-row">常用✨ <button type="button" class="chip xs" data-action="form:mru" data-target="shop" data-v="${esc(PROFILE.lastShopName)}">${esc(PROFILE.lastShopName)}</button></div>` : ''}
     </div>
 
     <div class="archive-bar" data-action="form:archive-toggle">
@@ -1115,6 +1116,7 @@ function openManualForm(existing, compare) {
         </div>
         <input id="f-portion" type="text" placeholder="自定义，如 一碗 / 两个 / 300g" value="${esc(portionVal)}" autocomplete="off">
       </div>
+      ${!portionVal && PROFILE && PROFILE.lastPortion ? `<div class="mru-row">上次分量✨ <button type="button" class="chip xs" data-action="form:mru" data-target="portion" data-v="${esc(PROFILE.lastPortion)}">${esc(PROFILE.lastPortion)}</button></div>` : ''}
     </div>
 
     <div class="field">
@@ -1224,6 +1226,15 @@ registerAction('form:portion', (el) => {
   const input = $('#f-portion');
   if (input) input.value = el.dataset.v;
   document.querySelectorAll('#f-portion-chips .chip').forEach((c) => c.classList.toggle('on', c === el));
+});
+/* 常用✨：一键回填上次常用的店铺名 / 分量（最近输入置顶，不覆盖你已填的内容时按需点选） */
+registerAction('form:mru', (el) => {
+  const t = el.dataset.target, v = el.dataset.v;
+  if (t === 'shop') { const i = $('#f-shop'); if (i) { i.value = v; renderShopSuggest(v); } }
+  else if (t === 'portion') {
+    const i = $('#f-portion'); if (i) i.value = v;
+    document.querySelectorAll('#f-portion-chips .chip').forEach((c) => c.classList.toggle('on', c.dataset.v === v));
+  }
 });
 
 /* 店铺名联想下拉：已有店铺优先展示（支持中文与拼音），并提示本次录入会发生什么 */
@@ -1465,7 +1476,13 @@ async function commitFoodSave(draft) {
   });
   if (window._formUpdateCal) { food.calAdopted = true; }
   const synced = await saveFood(food);
+  /* 记住上次常用：店铺名 + 分量，下次打开表单一键回填（最近输入置顶） */
+  if (food.shop) PROFILE.lastShopName = food.shop;
+  if (food.portion) PROFILE.lastPortion = food.portion;
+  await saveProfile(PROFILE);
   if (specFilled) await appendSpecLedger(foodShopId(food), food.name, food.spec, food.kcal, food.price);
+  /* 换了店铺：先把旧店里的这条单品摘掉，否则两家店会同时挂着它（孤儿 / 重复） */
+  if (old && old.shop && old.shop !== food.shop) await unlinkFoodFromShop(old);
   /* 反向同步：食谱里改了名字/热量/价格 → 同步到「觅食」对应的单品（仅更新已存在的链接，不凭空新建） */
   if (old && food.shop) {
     const sid = foodShopId(food);
@@ -1518,6 +1535,84 @@ let RECIPES_OPEN = { brands: {}, series: {}, cats: {} };   // 品牌/系列/品�
 const FOOD_TAGS = ['⭐ 最爱', '🥗 减肥期', '💪 高蛋白', '🔁 常吃', '⚠️ 避雷'];
 /* 搜索关键词：新录入的食物已落库 keywords；老数据没有则惰性补算，不写库也能被搜到 */
 function foodKeywords(f) { return (f && f.keywords && f.keywords.length) ? f.keywords : extractKeywords(f); }
+
+/* ============================================================
+ * 智能搜索联想：语义关联词 + 数据真实命中 + 搜索历史
+ * ============================================================ */
+const SEARCH_HISTORY_KEY = 'reliang.searchHistory';
+function getSearchHistory() {
+  try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]') || []; } catch (e) { return []; }
+}
+function pushSearchHistory(q) {
+  const s = String(q || '').trim();
+  if (!s) return;
+  let h = getSearchHistory().filter((x) => x !== s);
+  h.unshift(s);
+  try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(h.slice(0, 8))); } catch (e) { /* 隐私模式下忽略 */ }
+}
+function clearSearchHistory() { try { localStorage.removeItem(SEARCH_HISTORY_KEY); } catch (e) {} }
+/* 热门词：库里真实存在的关键词按出现次数排序（食物权重更高，因为那是用户自己的） */
+function hotKeywords(limit) {
+  const counter = new Map();
+  const bump = (w, n) => { const s = String(w || '').trim(); if (s) counter.set(s, (counter.get(s) || 0) + (n || 1)); };
+  (FOODS || []).forEach((f) => { foodKeywords(f).forEach((k) => bump(k, 3)); });
+  allShops().forEach((s) => {
+    bump(s.name, 2);
+    (s.items || []).forEach((it) => bump(it.name));
+  });
+  return Array.from(counter.entries()).sort((a, b) => b[1] - a[1]).slice(0, limit || 10).map((x) => x[0]);
+}
+/* 联想词：① 语义关联（搜减脂→轻食/沙拉/鸡胸）② 库里真实命中的食物名/店铺名/关键词 */
+function searchSuggestions(q) {
+  const query = String(q || '').trim();
+  if (!query) {
+    const hist = getSearchHistory();
+    return {
+      title: hist.length ? '🕘 最近搜过' : '🔥 库里热门',
+      items: hist.length ? hist : hotKeywords(10),
+      clearable: hist.length > 0
+    };
+  }
+  const out = [];
+  const push = (w) => { if (w && !out.includes(w)) out.push(w); };
+  relatedKeywords(query).forEach(push);                    // 语义连锁
+  const ql = query.toLowerCase();
+  (FOODS || []).forEach((f) => {
+    if (textMatch(f.name || '', ql)) push(f.name);
+    if (f.shop && textMatch(f.shop, ql)) push(f.shop);
+    foodKeywords(f).forEach((k) => { if (textMatch(k, ql)) push(k); });
+  });
+  allShops().forEach((s) => { if (textMatch(s.name, ql)) push(s.name); });
+  return { title: '🔗 关联搜索', items: out.slice(0, 12), clearable: false };
+}
+function renderRecipesSuggest(q) {
+  const box = $('#recipes-sug');
+  if (!box) return;
+  const sug = searchSuggestions(q);
+  if (!sug.items.length) { box.innerHTML = ''; box.classList.remove('on'); return; }
+  box.innerHTML = `
+    <div class="sug-head">${sug.title}${sug.clearable ? '<span class="sug-clear" data-action="recipes:clear-history">清除</span>' : ''}</div>
+    <div class="sug-wrap">${sug.items.map((w) => `<span class="sug-word" data-action="recipes:sug-pick" data-v="${esc(w)}">${highlightMatch(w, q)}</span>`).join('')}</div>`;
+  box.classList.add('on');
+}
+registerAction('recipes:sug-pick', (el) => {
+  const v = el.dataset.v;
+  RECIPES_Q = v;
+  pushSearchHistory(v);
+  const input = $('#recipes-search');
+  if (input) input.value = v;
+  const body = $('#recipes-body');
+  if (body) body.innerHTML = renderRecipesList();
+  const clr = document.querySelector('#view .search-clear');
+  if (clr) clr.style.display = '';
+  const box = $('#recipes-sug');
+  if (box) { box.innerHTML = ''; box.classList.remove('on'); }
+});
+registerAction('recipes:clear-history', () => {
+  clearSearchHistory();
+  renderRecipesSuggest($('#recipes-search') ? $('#recipes-search').value : '');
+  toast('已清除搜索历史', 'brand');
+});
 /* 候选品牌名（食谱库已有 + 平台品牌/店铺），用于录入时自动匹配 */
 function brandOptions() {
   const set = new Set();
@@ -1670,11 +1765,12 @@ registerPage('recipes', async function (root) {
       </div>
       <button class="btn sm primary" data-action="food:add">＋ 添加</button>
     </div>
-    <div class="search" style="margin-bottom:12px">
+    <div class="search" style="margin-bottom:8px">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="recipes-search" placeholder="搜品牌 / 系列 / 食物…" value="${esc(q)}" autocomplete="off">
+      <input id="recipes-search" placeholder="搜品牌 / 系列 / 食物…（试试「减脂」「早餐」）" value="${esc(q)}" autocomplete="off">
       ${q ? '<span class="search-clear" data-action="recipes:clear">✕</span>' : ''}
     </div>
+    <div id="recipes-sug" class="search-sug"></div>
     <div class="chips" id="recipes-chips" style="margin-bottom:10px">
       ${['全部', '食堂', '外卖', '自制', '饮品', '零食', '水果'].map((c) => `<button class="chip ${filter === c ? 'on' : ''}" data-action="recipes:cat" data-v="${c}">${c}</button>`).join('')}
     </div>
@@ -1688,13 +1784,22 @@ registerPage('recipes', async function (root) {
     <div id="recipes-body">${renderRecipesList()}</div>`;
   // 搜索：只更新列表区域，不重建 input（保护中文输入法组合）
   const box = $('#recipes-search');
-  if (box) box.addEventListener('input', (e) => {
-    RECIPES_Q = e.target.value;
-    const body = $('#recipes-body');
-    if (body) body.innerHTML = renderRecipesList();
-    const clr = document.querySelector('#view .search-clear');
-    if (clr) clr.style.display = e.target.value ? '' : 'none';
-  });
+  let histTimer = null;
+  if (box) {
+    box.addEventListener('input', (e) => {
+      RECIPES_Q = e.target.value;
+      const body = $('#recipes-body');
+      if (body) body.innerHTML = renderRecipesList();
+      const clr = document.querySelector('#view .search-clear');
+      if (clr) clr.style.display = e.target.value ? '' : 'none';
+      renderRecipesSuggest(e.target.value);
+      // 停止输入 900ms 且长度≥2 → 记入搜索历史
+      clearTimeout(histTimer);
+      const v = e.target.value.trim();
+      if (v.length >= 2) histTimer = setTimeout(() => pushSearchHistory(v), 900);
+    });
+    box.addEventListener('focus', () => renderRecipesSuggest(box.value));
+  }
   // 长按卡片 → 快速记录
   setTimeout(() => {
     document.querySelectorAll('#recipes-body .food-card').forEach((card) => {
@@ -1854,12 +1959,7 @@ registerAction('food:del-confirm', async (el) => {
   if (!f) return;
   await deleteFood(el.dataset.id);
   // 同步清理「觅食」中由该食物生成的店铺单品/规格账本，避免删不干净又冒出来
-  const shopId = foodShopId(f);
-  const edits = await getEdits();
-  for (const e of edits) {
-    if (e.kind === 'item' && e.shopId === shopId && (e.origName === f.name || e.name === f.name)) await delEdit(e.ek);
-    if (e.ek === 'spec:' + shopId + '|' + f.name) await delEdit(e.ek);
-  }
+  await unlinkFoodFromShop(f);
   await loadFoods();
   closeModal();
   rerender();
