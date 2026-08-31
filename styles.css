@@ -304,6 +304,9 @@ mark.hl { background: linear-gradient(180deg, transparent 55%, rgba(94,92,230,.3
   background: rgba(0,0,0,.03); border-radius: 12px;
   padding: 9px 12px; margin-bottom: 14px;
 }
+/* 智能粘贴入口：名称框下方一行（按钮 + 说明） */
+.smart-paste-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.smart-paste-row .chip.xs { background: var(--brand-soft); color: var(--brand); }
 /* 自动归档：默认收起，点开可微调分类/系列/关键词 */
 .archive-bar {
   display: flex; align-items: center; gap: 8px;
