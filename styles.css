@@ -1217,23 +1217,6 @@ mark.hl { background: linear-gradient(180deg, transparent 55%, rgba(94,92,230,.3
 /* ============================================================
  * UX 打磨（v37）：常点货架 · 折叠筛选 · 横向滚动吸附 · 宽屏栅格
  * ============================================================ */
-/* 店铺详情：常点货架 —— 最近吃过的单品像货架一样陈列在顶部 */
-.menu-shelf {
-  background: linear-gradient(180deg, var(--brand-soft), rgba(94,92,230,0.05));
-  border-radius: 22px;
-  padding: 12px 12px 14px;
-  margin-bottom: 4px;
-  box-shadow: inset 0 -3px 0 rgba(94,92,230,0.10);
-}
-.menu-shelf .menu-item { background: #fff; box-shadow: 0 2px 8px rgba(94,92,230,0.10); }
-.menu-item.shelf { border-left: 3px solid var(--brand); }
-.shelf-divider {
-  display: flex; align-items: center; gap: 10px;
-  margin: 18px 4px 12px;
-  font-size: 12px; font-weight: 700; color: var(--sub);
-}
-.shelf-divider::before, .shelf-divider::after { content: ''; flex: 1; height: 1px; background: rgba(0,0,0,0.06); }
-.shelf-divider span { white-space: nowrap; }
 
 /* 觅食页：折叠筛选 —— 默认收起为一行摘要，减少首屏竖向高度 */
 .filter-toggle {
@@ -1260,5 +1243,5 @@ mark.hl { background: linear-gradient(180deg, transparent 55%, rgba(94,92,230,.3
 
 /* 宽屏：店铺菜单与整页内容用栅格铺满，不再单列浪费空间 */
 @media (min-width: 900px) {
-  .menu-list, .menu-shelf { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; align-content: start; }
+  .menu-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; align-content: start; }
 }
