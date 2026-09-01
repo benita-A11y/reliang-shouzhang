@@ -11,11 +11,16 @@ const SHOP_VIEW = { id: null, series: '全部', sort: 'default' };
 /* 店铺分类 → emoji（覆盖 BRANDS 饮品品牌与 SHOPS 各品类，避免错误套用食物分类 CAT_EMOJI） */
 const SHOP_CAT = { '奶茶咖啡': '🧋', '汉堡炸鸡': '🍔', '麻辣烫': '🌶️', '粉面': '🍜', '米饭套餐': '🍚', '轻食沙拉': '🥗', '甜品面包': '🍰', '火锅': '🍲', '烧烤': '🍢', '快餐': '🍟', '超市': '🛒', '其他': '🏪' };
 function shopCatLabel(cat) { return cat ? (SHOP_CAT[cat] || '🍽️') + ' ' + cat : '🧋 奶茶咖啡'; }
-/* 货架逻辑①：取该店铺下用户「最近录入/编辑」过的食物时间（updatedAt 最大），无则返回 '' */
-function shopLastEditAt(shop) {
+/* 货架逻辑①：取该店铺下用户「最近活动」（编辑 ∪ 吃过）时间，无则返回 '' */
+function lastActiveAt(f) {
+  const a = f.updatedAt || '';
+  const b = f.lastEatenAt || '';
+  return (a >= b) ? a : b;
+}
+function shopLastActiveAt(shop) {
   let mx = '';
   for (const f of (FOODS || [])) {
-    if (f.shop === shop.name && f.updatedAt && f.updatedAt > mx) mx = f.updatedAt;
+    if (f.shop === shop.name) { const t = lastActiveAt(f); if (t && t > mx) mx = t; }
   }
   return mx;
 }
@@ -23,7 +28,7 @@ function shopLastEditAt(shop) {
 registerPage('hunt', async function (root) {
   await loadFoods();   // 让搜索联想能命中「我的食谱」里的真实关键词
   let recentFoods = [];
-  try { recentFoods = FOODS.filter((f) => f.updatedAt).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).slice(0, 8); } catch (e) {}
+  try { recentFoods = FOODS.filter((f) => lastActiveAt(f)).sort((a, b) => String(lastActiveAt(b)).localeCompare(String(lastActiveAt(a)))).slice(0, 8); } catch (e) {}
   const stats = await getDayStats(todayKey());
   const target = PROFILE.targetKcal || 1800;
   const remaining = Math.max(0, target - stats.kcal);
@@ -80,14 +85,14 @@ registerPage('hunt', async function (root) {
       ${[['hot', '🔥 附近热门'], ['cat', '📂 按品类找'], ['fav', '⭐ 我的收藏']].map(([k, t]) => `<div class="tab-item ${HUNT.tab === k ? 'on' : ''}" data-action="hunt:tab" data-v="${k}">${t}</div>`).join('')}
     </div>
     ${HUNT.tab !== 'fav' && recentFoods.length ? `
-    <div class="section-title" style="margin-top:18px">🛒 最近录入<span class="small muted" style="font-weight:500">你最近记下 ${recentFoods.length} 样 · 按记录顺序叠加</span></div>
+    <div class="section-title" style="margin-top:18px">🛒 最近记录<span class="small muted" style="font-weight:500">你最近动过的 ${recentFoods.length} 样 · 按时间叠加</span></div>
     <div class="menu-shelf">
       ${recentFoods.map((f) => `
         <div class="menu-item shelf" data-action="hunt:fv" data-id="${f.id}">
           <div class="mi-photo" style="--nc-soft:${hexA('#FF9500', 0.12)}">${f.photo ? `<img src="${f.photo}" alt="">` : (f.emoji || '🍽️')}</div>
           <div class="mi-info">
             <div class="mi-name">${esc(f.name)}${f.eatCount ? `<span class="mi-badge eaten">🔥${f.eatCount}</span>` : ''}</div>
-            <div class="mi-meta">${dkr(f.kcal)} · ${esc(f.shop || '')}${f.updatedAt ? ' · 📝' + relTime(f.updatedAt) : ''}</div>
+            <div class="mi-meta">${dkr(f.kcal)} · ${esc(f.shop || '')}${lastActiveAt(f) ? ' · ' + ((f.lastEatenAt && f.lastEatenAt >= (f.updatedAt || '')) ? '🕐' : '📝') + relTime(lastActiveAt(f)) : ''}</div>
           </div>
           <div class="mi-right"><button class="point-it" data-action="hunt:fv" data-id="${f.id}">点它</button></div>
         </div>`).join('')}
@@ -203,9 +208,9 @@ function huntPool() {
   // 搜索：店铺名 + 单品名，支持中文模糊与拼音（全拼 / 首字母）
   const q = (HUNT.q || '').trim();
   if (q) list = list.filter((s) => textMatch(s.name, q) || (s.items || []).some((it) => textMatch(it.name, q)));
-  // 货架逻辑①：用户最近「录入/编辑」过的店铺，按编辑时间倒序浮到最上方（MRU）；其余店保持热度序
+  // 货架逻辑①：用户最近「活动过」（编辑 ∪ 吃过）的店铺，按活动时间倒序浮到最上方（MRU）；其余店保持热度序
   list.sort((a, b) => {
-    const ea = shopLastEditAt(a), eb = shopLastEditAt(b);
+    const ea = shopLastActiveAt(a), eb = shopLastActiveAt(b);
     if (ea && eb) return eb.localeCompare(ea);
     if (ea && !eb) return -1;
     if (!ea && eb) return 1;
@@ -313,7 +318,8 @@ function menuItemHTML(it, foodMap, shop, shelf) {
   const eaten = m ? (Number(m.eatCount) || 0) : 0;
   const badge = m ? `<span class="mi-badge mine" title="在我的食谱里">📌</span>` + (eaten ? `<span class="mi-badge eaten" title="吃过 ${eaten} 次">🔥${eaten}</span>` : '') : '';
   const photo = (m && m.photo) ? m.photo : (it.image || '');
-  const lastTxt = (shelf && m && m.updatedAt) ? ' · 📝' + relTime(m.updatedAt) : (m && m.lastEatenAt ? ' · 🕐' + relTime(m.lastEatenAt) : '');
+  const la = m ? lastActiveAt(m) : '';
+  const lastTxt = la ? ' · ' + ((m.lastEatenAt && m.lastEatenAt >= (m.updatedAt || '')) ? '🕐' : '📝') + relTime(la) : '';
   return `
     <div class="menu-item ${shelf ? 'shelf' : ''}" data-action="shop:item" data-i="${it._i}">
       <div class="mi-photo" style="--nc-soft:${hexA(shop.color || '#5E5CE6', 0.12)}">${photo ? `<img src="${photo}" alt="">` : shop.emoji}</div>
@@ -346,9 +352,9 @@ registerPage('shop', async function (root) {
   const seriesList = ['全部', ...new Set(shop.items.map((it) => it.series || guessSeries(it.name)))];
   // 用 slice() 复制一份再排序，避免改动 SHOP_MAP 里的原始顺序
   let items = SHOP_VIEW.series === '全部' ? shop.items.slice() : shop.items.filter((it) => (it.series || guessSeries(it.name)) === SHOP_VIEW.series);
-  /* 货架逻辑②：把「最近录入/编辑」的单品置顶成货架，其余按所选排序作为全部菜单 */
-  const editedOf = (it) => (foodMap[it.name] && foodMap[it.name].updatedAt) ? foodMap[it.name] : null;
-  const shelfItems = items.filter((it) => editedOf(it) && it.status !== '下架').sort((a, b) => (editedOf(b).updatedAt || '').localeCompare(editedOf(a).updatedAt || ''));
+  /* 货架逻辑②：把「最近活动过」（编辑 ∪ 吃过）的单品置顶成货架，其余按所选排序作为全部菜单 */
+  const activeOf = (it) => { const f = foodMap[it.name]; return (f && lastActiveAt(f)) ? f : null; };
+  const shelfItems = items.filter((it) => activeOf(it) && it.status !== '下架').sort((a, b) => (lastActiveAt(activeOf(b)) || '').localeCompare(lastActiveAt(activeOf(a)) || ''));
   const shelfKeys = new Set(shelfItems.map((it) => it._i));
   let catalogItems = items.filter((it) => !shelfKeys.has(it._i) && it.status !== '下架');
   if (SHOP_VIEW.sort === 'kcal-asc') catalogItems.sort((a, b) => (a.kcal || 0) - (b.kcal || 0));
@@ -383,14 +389,14 @@ registerPage('shop', async function (root) {
     </div>
     ${(shop.items || []).length > 1 ? `
     <div class="chips shop-item-sort" style="margin:10px 0 4px;opacity:.85">
-      ${[['default', '🥇 推荐'], ['recent', '🕐 最近录入'], ['freq', '🔥 我常吃'], ['kcal-asc', '🥗 热量低→高'], ['kcal-desc', '🍔 热量高→低']].map(([v, t]) => `<button class="chip sm ${SHOP_VIEW.sort === v ? 'on' : ''}" data-action="shop:sort" data-v="${v}">${t}</button>`).join('')}
+      ${[['default', '🥇 推荐'], ['recent', '🕐 最近记录'], ['freq', '🔥 我常吃'], ['kcal-asc', '🥗 热量低→高'], ['kcal-desc', '🍔 热量高→低']].map(([v, t]) => `<button class="chip sm ${SHOP_VIEW.sort === v ? 'on' : ''}" data-action="shop:sort" data-v="${v}">${t}</button>`).join('')}
     </div>` : ''}
     ${recentOnly ? (shelfItems.length ? `
-    <div class="section-title" style="margin-top:18px">🛒 最近录入<span class="small muted" style="font-weight:500">你最近记下的 ${shelfItems.length} 样</span></div>
+    <div class="section-title" style="margin-top:18px">🛒 最近记录<span class="small muted" style="font-weight:500">你最近动过的 ${shelfItems.length} 样</span></div>
     <div class="menu-list">${shelfItems.map((it) => menuItemHTML(it, foodMap, shop, true)).join('')}</div>
-    ` : `<div class="empty-state" style="padding:30px 20px"><div class="es-icon">📝</div><div class="es-title">还没有最近录入的记录</div><div class="es-sub">去记几样，最近录入的会自动出现在货架最上面</div></div>`) : `
+    ` : `<div class="empty-state" style="padding:30px 20px"><div class="es-icon">📝</div><div class="es-title">还没有最近记录</div><div class="es-sub">去记几样或点它吃过，最近动过的会自动出现在货架最上面</div></div>`) : `
     ${showShelf ? `
-    <div class="section-title" style="margin-top:18px">🛒 最近录入货架<span class="small muted" style="font-weight:500">你最近记下 ${shelfItems.length} 样 · 置顶</span></div>
+    <div class="section-title" style="margin-top:18px">🛒 最近记录货架<span class="small muted" style="font-weight:500">你最近动过 ${shelfItems.length} 样 · 置顶</span></div>
     <div class="menu-shelf">${shelfItems.map((it) => menuItemHTML(it, foodMap, shop, true)).join('')}</div>
     <div class="shelf-divider"><span>全部菜单 ${catalogItems.length} 款</span></div>
     ` : ''}
