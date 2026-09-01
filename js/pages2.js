@@ -72,16 +72,17 @@ registerPage('hunt', async function (root) {
       ${[['hot', '🔥 附近热门'], ['cat', '📂 按品类找'], ['fav', '⭐ 我的收藏']].map(([k, t]) => `<div class="tab-item ${HUNT.tab === k ? 'on' : ''}" data-action="hunt:tab" data-v="${k}">${t}</div>`).join('')}
     </div>
     ${HUNT.tab !== 'fav' && recentFoods.length ? `
-    <div class="recent-strip-wrap">
-      <div class="rs-tag">⚡ 继续吃</div>
-      <div class="recent-strip">
-        ${recentFoods.map((f) => `
-          <div class="recent-chip" data-action="hunt:fv" data-id="${f.id}">
-            <div class="rc-photo">${photoHTML(f)}</div>
-            <div class="rc-name">${esc(f.name)}</div>
-            <div class="rc-kcal">${dkr(f.kcal)}</div>
-          </div>`).join('')}
-      </div>
+    <div class="section-title" style="margin-top:18px">🛒 常吃货架<span class="small muted" style="font-weight:500">你最近吃过 ${recentFoods.length} 样 · 按时序叠加</span></div>
+    <div class="menu-shelf">
+      ${recentFoods.map((f) => `
+        <div class="menu-item shelf" data-action="hunt:fv" data-id="${f.id}">
+          <div class="mi-photo" style="--nc-soft:${hexA('#FF9500', 0.12)}">${f.photo ? `<img src="${f.photo}" alt="">` : (f.emoji || '🍽️')}</div>
+          <div class="mi-info">
+            <div class="mi-name">${esc(f.name)}${f.eatCount ? `<span class="mi-badge eaten">🔥${f.eatCount}</span>` : ''}</div>
+            <div class="mi-meta">${dkr(f.kcal)} · ${esc(f.shop || '')}${f.lastEatenAt ? ' · 🕐' + relTime(f.lastEatenAt) : ''}</div>
+          </div>
+          <div class="mi-right"><button class="point-it" data-action="hunt:fv" data-id="${f.id}">点它</button></div>
+        </div>`).join('')}
     </div>` : ''}
     <div id="hunt-body">${await renderHuntBody()}</div>
     ${HUNT.tab !== 'fav' ? `<div id="hunt-ai"></div>` : ''}`;
