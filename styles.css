@@ -1048,7 +1048,8 @@ mark.hl { background: linear-gradient(180deg, transparent 55%, rgba(94,92,230,.3
 .menu-list { display: flex; flex-direction: column; gap: 10px; }
 .menu-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 18px; background: var(--card); box-shadow: var(--shadow-soft); cursor: pointer; }
 .menu-item:active { transform: scale(.985); }
-.mi-photo { width: 54px; height: 54px; border-radius: 16px; background: var(--nc-soft, var(--blue-soft)); display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; }
+.mi-photo { width: 54px; height: 54px; border-radius: 16px; background: var(--nc-soft, var(--blue-soft)); display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; overflow: hidden; }
+.mi-photo img { width: 100%; height: 100%; object-fit: cover; }
 .mi-info { flex: 1; min-width: 0; }
 .mi-name { font-size: 14.5px; font-weight: 700; }
 .mi-meta { font-size: 11.5px; color: var(--sub); margin-top: 3px; }
