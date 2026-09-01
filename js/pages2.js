@@ -27,8 +27,6 @@ function shopLastActiveAt(shop) {
 
 registerPage('hunt', async function (root) {
   await loadFoods();   // 让搜索联想能命中「我的食谱」里的真实关键词
-  let recentFoods = [];
-  try { recentFoods = FOODS.filter((f) => lastActiveAt(f)).sort((a, b) => String(lastActiveAt(b)).localeCompare(String(lastActiveAt(a)))).slice(0, 8); } catch (e) {}
   const stats = await getDayStats(todayKey());
   const target = PROFILE.targetKcal || 1800;
   const remaining = Math.max(0, target - stats.kcal);
@@ -84,19 +82,6 @@ registerPage('hunt', async function (root) {
     <div class="tabs">
       ${[['hot', '🔥 附近热门'], ['cat', '📂 按品类找'], ['fav', '⭐ 我的收藏']].map(([k, t]) => `<div class="tab-item ${HUNT.tab === k ? 'on' : ''}" data-action="hunt:tab" data-v="${k}">${t}</div>`).join('')}
     </div>
-    ${HUNT.tab !== 'fav' && recentFoods.length ? `
-    <div class="section-title" style="margin-top:18px">🛒 最近记录<span class="small muted" style="font-weight:500">你最近动过的 ${recentFoods.length} 样 · 按时间叠加</span></div>
-    <div class="menu-shelf">
-      ${recentFoods.map((f) => `
-        <div class="menu-item shelf" data-action="hunt:fv" data-id="${f.id}">
-          <div class="mi-photo" style="--nc-soft:${hexA('#FF9500', 0.12)}">${f.photo ? `<img src="${f.photo}" alt="">` : (f.emoji || '🍽️')}</div>
-          <div class="mi-info">
-            <div class="mi-name">${esc(f.name)}${f.eatCount ? `<span class="mi-badge eaten">🔥${f.eatCount}</span>` : ''}</div>
-            <div class="mi-meta">${dkr(f.kcal)} · ${esc(f.shop || '')}${lastActiveAt(f) ? ' · ' + ((f.lastEatenAt && f.lastEatenAt >= (f.updatedAt || '')) ? '🕐' : '📝') + relTime(lastActiveAt(f)) : ''}</div>
-          </div>
-          <div class="mi-right"><button class="point-it" data-action="hunt:fv" data-id="${f.id}">点它</button></div>
-        </div>`).join('')}
-    </div>` : ''}
     <div id="hunt-body">${await renderHuntBody()}</div>
     ${HUNT.tab !== 'fav' ? `<div id="hunt-ai"></div>` : ''}`;
   // 搜索：只重渲染列表区，不重建 input（保护中文输入法组合）
@@ -312,20 +297,18 @@ function relTime(iso) {
   if (d < 86400 * 30) return Math.round(d / 86400) + '天前';
   return Math.round(d / 86400 / 30) + '个月前';
 }
-/* 单个菜单项 HTML（货架 / 全部菜单共用，shelf=true 时加左侧高亮） */
-function menuItemHTML(it, foodMap, shop, shelf) {
+/* 单个菜单项 HTML（普通菜单卡片，不贴"最近/常拿"标签） */
+function menuItemHTML(it, foodMap, shop) {
   const m = foodMap[it.name] || null;
   const eaten = m ? (Number(m.eatCount) || 0) : 0;
   const badge = m ? `<span class="mi-badge mine" title="在我的食谱里">📌</span>` + (eaten ? `<span class="mi-badge eaten" title="吃过 ${eaten} 次">🔥${eaten}</span>` : '') : '';
   const photo = (m && m.photo) ? m.photo : (it.image || '');
-  const la = m ? lastActiveAt(m) : '';
-  const lastTxt = la ? ' · ' + ((m.lastEatenAt && m.lastEatenAt >= (m.updatedAt || '')) ? '🕐' : '📝') + relTime(la) : '';
   return `
-    <div class="menu-item ${shelf ? 'shelf' : ''}" data-action="shop:item" data-i="${it._i}">
+    <div class="menu-item" data-action="shop:item" data-i="${it._i}">
       <div class="mi-photo" style="--nc-soft:${hexA(shop.color || '#5E5CE6', 0.12)}">${photo ? `<img src="${photo}" alt="">` : shop.emoji}</div>
       <div class="mi-info">
         <div class="mi-name">${esc(it.name)}${it._edited ? '<span class="edited-tag">已编辑</span>' : ''} ${badge}</div>
-        <div class="mi-meta">¥${it.price.toFixed(2)} · ${it.kcal}kcal · ${esc(it.series || guessSeries(it.name))}${lastTxt}</div>
+        <div class="mi-meta">¥${it.price.toFixed(2)} · ${it.kcal}kcal · ${esc(it.series || guessSeries(it.name))}</div>
       </div>
       <div class="mi-right">
         <button class="mi-more" data-action="item:menu" data-i="${it._i}">⋯</button>
@@ -352,18 +335,15 @@ registerPage('shop', async function (root) {
   const seriesList = ['全部', ...new Set(shop.items.map((it) => it.series || guessSeries(it.name)))];
   // 用 slice() 复制一份再排序，避免改动 SHOP_MAP 里的原始顺序
   let items = SHOP_VIEW.series === '全部' ? shop.items.slice() : shop.items.filter((it) => (it.series || guessSeries(it.name)) === SHOP_VIEW.series);
-  /* 货架逻辑②：把「最近活动过」（编辑 ∪ 吃过）的单品置顶成货架，其余按所选排序作为全部菜单 */
-  const activeOf = (it) => { const f = foodMap[it.name]; return (f && lastActiveAt(f)) ? f : null; };
-  const shelfItems = items.filter((it) => activeOf(it) && it.status !== '下架').sort((a, b) => (lastActiveAt(activeOf(b)) || '').localeCompare(lastActiveAt(activeOf(a)) || ''));
-  const shelfKeys = new Set(shelfItems.map((it) => it._i));
-  let catalogItems = items.filter((it) => !shelfKeys.has(it._i) && it.status !== '下架');
-  if (SHOP_VIEW.sort === 'kcal-asc') catalogItems.sort((a, b) => (a.kcal || 0) - (b.kcal || 0));
-  else if (SHOP_VIEW.sort === 'kcal-desc') catalogItems.sort((a, b) => (b.kcal || 0) - (a.kcal || 0));
-  else if (SHOP_VIEW.sort === 'freq') {
-    catalogItems.sort((a, b) => ((foodMap[b.name] && Number(foodMap[b.name].eatCount)) || 0) - ((foodMap[a.name] && Number(foodMap[a.name].eatCount)) || 0));
-  }
-  const showShelf = shelfItems.length > 0 && SHOP_VIEW.sort !== 'recent';
-  const recentOnly = SHOP_VIEW.sort === 'recent';
+  /* 货架逻辑②：有「最近活动」（编辑 ∪ 吃过）的单品自动排到菜单最前面（越近期越靠前），其余保持原列表顺序；不贴标签、不分专区 */
+  const actRank = (it) => { const f = foodMap[it.name]; return f ? lastActiveAt(f) : ''; };
+  const visible = items.filter((it) => it.status !== '下架');
+  const active = visible.filter((it) => actRank(it)).sort((a, b) => (actRank(b) || '').localeCompare(actRank(a) || ''));
+  let rest = visible.filter((it) => !actRank(it));
+  if (SHOP_VIEW.sort === 'kcal-asc') rest.sort((a, b) => (a.kcal || 0) - (b.kcal || 0));
+  else if (SHOP_VIEW.sort === 'kcal-desc') rest.sort((a, b) => (b.kcal || 0) - (a.kcal || 0));
+  else if (SHOP_VIEW.sort === 'freq') rest.sort((a, b) => ((foodMap[b.name] && Number(foodMap[b.name].eatCount)) || 0) - ((foodMap[a.name] && Number(foodMap[a.name].eatCount)) || 0));
+  const finalItems = active.concat(rest);
   const mineCount = items.filter((it) => foodMap[it.name]).length;
   const itemNames = new Set(shop.items.map((it) => it.name));
   const orphans = FOODS.filter((f) => f.shop === shop.name && !itemNames.has(f.name));
@@ -389,20 +369,10 @@ registerPage('shop', async function (root) {
     </div>
     ${(shop.items || []).length > 1 ? `
     <div class="chips shop-item-sort" style="margin:10px 0 4px;opacity:.85">
-      ${[['default', '🥇 推荐'], ['recent', '🕐 最近记录'], ['freq', '🔥 我常吃'], ['kcal-asc', '🥗 热量低→高'], ['kcal-desc', '🍔 热量高→低']].map(([v, t]) => `<button class="chip sm ${SHOP_VIEW.sort === v ? 'on' : ''}" data-action="shop:sort" data-v="${v}">${t}</button>`).join('')}
+      ${[['default', '🥇 推荐'], ['freq', '🔥 我常吃'], ['kcal-asc', '🥗 热量低→高'], ['kcal-desc', '🍔 热量高→低']].map(([v, t]) => `<button class="chip sm ${SHOP_VIEW.sort === v ? 'on' : ''}" data-action="shop:sort" data-v="${v}">${t}</button>`).join('')}
     </div>` : ''}
-    ${recentOnly ? (shelfItems.length ? `
-    <div class="section-title" style="margin-top:18px">🛒 最近记录<span class="small muted" style="font-weight:500">你最近动过的 ${shelfItems.length} 样</span></div>
-    <div class="menu-list">${shelfItems.map((it) => menuItemHTML(it, foodMap, shop, true)).join('')}</div>
-    ` : `<div class="empty-state" style="padding:30px 20px"><div class="es-icon">📝</div><div class="es-title">还没有最近记录</div><div class="es-sub">去记几样或点它吃过，最近动过的会自动出现在货架最上面</div></div>`) : `
-    ${showShelf ? `
-    <div class="section-title" style="margin-top:18px">🛒 最近记录货架<span class="small muted" style="font-weight:500">你最近动过 ${shelfItems.length} 样 · 置顶</span></div>
-    <div class="menu-shelf">${shelfItems.map((it) => menuItemHTML(it, foodMap, shop, true)).join('')}</div>
-    <div class="shelf-divider"><span>全部菜单 ${catalogItems.length} 款</span></div>
-    ` : ''}
     <div class="section-title" style="margin-top:18px">🛒 本店菜单<span class="small muted" style="font-weight:500">${mineCount > 0 ? '📌 已为你标记 ' + mineCount + ' 款' : '平台收录'}</span></div>
-    <div class="menu-list">${catalogItems.map((it) => menuItemHTML(it, foodMap, shop, false)).join('')}</div>
-    `}
+    <div class="menu-list">${finalItems.map((it) => menuItemHTML(it, foodMap, shop)).join('')}</div>
     ${orphans.length ? `
     <div class="section-title" style="margin-top:18px">📥 仅在我的食谱<span class="small muted" style="font-weight:500">还没收录进本店菜单</span></div>
     <div class="menu-list">
