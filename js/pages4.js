@@ -46,7 +46,7 @@ function renderNutriStep1(analysis, yIndulged, overDays) {
   const cnt = PROFILE.tasteCount || 0;
   const hint = cnt >= 10 ? `🎯 已积累 ${cnt} 次偏好，已为你默认选择` : `可多选，越选越懂你（已积累 ${cnt} 次偏好）`;
   return `
-    <div class="card" style="background:linear-gradient(160deg,#AF52DE,#7D3FBF);color:#fff;border:none">
+    <div class="card" style="background:linear-gradient(160deg,#B39DDB,#9575CD);color:#fff;border:none">
       <div class="small" style="opacity:.9">今日体检报告</div>
       <div style="font-size:19px;font-weight:800;margin:8px 0 12px">${esc(advice)}</div>
       <div class="flex" style="gap:8px;flex-wrap:wrap">
