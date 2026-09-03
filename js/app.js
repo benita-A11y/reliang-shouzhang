@@ -26,14 +26,14 @@ const MEALS = [
   { k: 'snack', label: '加餐', emoji: '🍿' }
 ];
 const NAV = [
-  { key: 'home', emoji: '🏠', label: '首页', color: '#5E5CE6', soft: 'rgba(94,92,230,.14)' },
-  { key: 'record', emoji: '📷', label: '记录', color: '#34C759', soft: 'rgba(52,199,89,.14)' },
-  { key: 'recipes', emoji: '📖', label: '我的食谱', color: '#FF9500', soft: 'rgba(255,149,0,.14)' },
-  { key: 'hunt', emoji: '🍽️', label: '觅食', color: '#FF2D55', soft: 'rgba(255,45,85,.12)' },
-  { key: 'bill', emoji: '🧾', label: '多巴胺账单', color: '#FF3B30', soft: 'rgba(255,59,48,.12)' },
-  { key: 'board', emoji: '📊', label: '数据看板', color: '#007AFF', soft: 'rgba(0,122,255,.12)' },
-  { key: 'nutri', emoji: '🤖', label: '营养秘书', color: '#AF52DE', soft: 'rgba(175,82,222,.12)' },
-  { key: 'wheel', emoji: '🎯', label: '今天吃什么', color: '#FF9500', soft: 'rgba(255,149,0,.16)' },
+  { key: 'home', emoji: '🏠', label: '首页', color: '#7A78E8', soft: 'rgba(122,120,232,.14)' },
+  { key: 'record', emoji: '📷', label: '记录', color: '#65B66A', soft: 'rgba(101,182,106,.14)' },
+  { key: 'recipes', emoji: '📖', label: '我的食谱', color: '#FFB74D', soft: 'rgba(255,183,77,.14)' },
+  { key: 'hunt', emoji: '🍽️', label: '觅食', color: '#FFCDD0', soft: 'rgba(255,205,208,.14)' },
+  { key: 'bill', emoji: '🧾', label: '多巴胺账单', color: '#E53733', soft: 'rgba(229,55,51,.12)' },
+  { key: 'board', emoji: '📊', label: '数据看板', color: '#64B3F6', soft: 'rgba(100,179,246,.12)' },
+  { key: 'nutri', emoji: '🤖', label: '营养秘书', color: '#B39DDB', soft: 'rgba(179,157,219,.12)' },
+  { key: 'wheel', emoji: '🎯', label: '今天吃什么', color: '#FFB74D', soft: 'rgba(255,183,77,.16)' },
   { key: 'profile', emoji: '👤', label: '我的', color: '#8E8E93', soft: 'rgba(142,142,147,.14)' }
 ];
 const MEAL_EMOJI = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' };
@@ -181,7 +181,7 @@ function toast(msg, type = '', opts = null) {
 }
 function confetti() {
   const host = $('#confetti-root');
-  const colors = ['#5E5CE6', '#34C759', '#FF9500', '#FF2D55', '#FFCC00', '#007AFF'];
+  const colors = ['#7A78E8', '#65B66A', '#FFB74D', '#FFCDD0', '#FFE939', '#64B3F6'];
   for (let i = 0; i < 46; i++) {
     const c = document.createElement('div');
     c.className = 'confetti';
