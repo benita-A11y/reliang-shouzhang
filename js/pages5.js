@@ -6,7 +6,7 @@
 'use strict';
 
 const WHEEL = { data: null, place: 0, edit: false, spinning: false, angle: 0, _suppressUntil: 0, _foodI: null, _renameI: null };
-const WHEEL_COLORS = ['#FF6B6B', '#FFA94D', '#FFD43B', '#69DB7C', '#3BC9DB', '#4DABF7', '#748FFC', '#9775FA', '#F783AC', '#63E6BE', '#FF922B', '#A9E34B', '#FF8787', '#5F3DC4', '#1098AD', '#2F9E44', '#F59F00', '#E8590C', '#22B8CF', '#AE3EC9'];
+const WHEEL_COLORS = ['#FFCDD0', '#FFB74D', '#FFE939', '#65B66A', '#80DEEA', '#64B3F6', '#B39DDB', '#EF9A9A', '#FFEBEC', '#FFF7C4', '#C8E6C9', '#E0F7FA', '#E3F2FD', '#EDE7F6', '#FFF3E0', '#FC6600', '#0096A7', '#5C33B1', '#E53733', '#2E7D32'];
 const WHEEL_PLACE_EMOJI = ['🏫', '🏬', '🍢', '🍽️', '🎪', '🌮', '🏞️', '☕', '🍜', '🛍️'];
 const WHEEL_FOOD_EMOJIS = ['🍜', '🍛', '🍗', '🍚', '🍝', '🥗', '🍲', '🥟', '🍢', '🫓', '🌶️', '🍳', '🥘', '🍣', '🍖', '🍔', '🍕', '🌭', '🥪', '🍱'];
 
