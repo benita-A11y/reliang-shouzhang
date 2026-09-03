@@ -31,7 +31,7 @@ registerPage('home', async function (root) {
   const remaining = Math.max(0, budget - stats.kcal);
   const mt = macroTargets(PROFILE, target);
   const pct = Math.min(1, stats.kcal / budget);
-  const ringColor = remaining / target > 0.5 ? '#34C759' : remaining / target > 0.2 ? '#FF9500' : '#FF3B30';
+  const ringColor = remaining / target > 0.5 ? '#65B66A' : remaining / target > 0.2 ? '#FFB74D' : '#E53733';
   const waterTarget = PROFILE.waterTarget || 8;
   const water = dayInfo.water || 0;
   const weightDiff = latestWeight && prevWeight ? +(latestWeight.kg - prevWeight.kg).toFixed(1) : null;
@@ -76,7 +76,7 @@ registerPage('home', async function (root) {
       <div class="rc-foot" style="color:${ringColor}">目标 ${target}kcal · 已吃 ${stats.kcal}kcal${burned ? ' · 运动 +' + burned : ''}</div>
       <!-- ② 三大营养素：距圆环 24pt；蛋白紫 / 碳水蓝 / 脂肪橙 -->
       <div class="macro-box">
-        ${[['protein', '蛋白质', '#AF52DE', stats.protein, mt.protein], ['carbs', '碳水', '#007AFF', stats.carbs, mt.carbs], ['fat', '脂肪', '#FF9500', stats.fat, mt.fat]].map(([k, label, color, val, tgt]) => `
+        ${[['protein', '蛋白质', '#B39DDB', stats.protein, mt.protein], ['carbs', '碳水', '#64B3F6', stats.carbs, mt.carbs], ['fat', '脂肪', '#FFB74D', stats.fat, mt.fat]].map(([k, label, color, val, tgt]) => `
           <div class="macro-row">
             <div class="macro-label"><span class="macro-dot" style="background:${color}"></span>${label}</div>
             <div class="macro-track"><div class="macro-fill" style="width:${Math.min(100, (val / tgt) * 100)}%;background:${color}"></div></div>
@@ -1693,10 +1693,20 @@ function catEmoji(c) {
   const m = { '奶茶咖啡': '🧋', '汉堡炸鸡': '🍔', '火锅': '🍲', '烧烤': '🍢', '快餐': '🍟', '食堂': '🍚', '外卖': '🥡', '自制': '🏠', '面包甜点': '🍰', '零食': '🍬', '水果': '🍎', '麻辣烫': '🌶️', '粉面': '🍜' };
   return m[c] || '🍽️';
 }
+const FOOD_TINTS = [
+  'linear-gradient(135deg, #FFEBEC, #FFCDD0)',
+  'linear-gradient(135deg, #FFF7C4, #FFE939)',
+  'linear-gradient(135deg, #C8E6C9, #65B66A)',
+  'linear-gradient(135deg, #E0F7FA, #80DEEA)',
+  'linear-gradient(135deg, #E3F2FD, #64B3F6)',
+  'linear-gradient(135deg, #EDE7F6, #B39DDB)',
+  'linear-gradient(135deg, #FFF3E0, #FFB74D)',
+  'linear-gradient(135deg, #FFEBEE, #EF9A9A)'
+];
 function foodTint(name) {
-  let h = 0;
-  for (const ch of (name || 'x')) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return `linear-gradient(135deg, hsl(${h} 68% 92%), hsl(${(h + 38) % 360} 62% 87%))`;
+  let i = 0;
+  for (const ch of (name || 'x')) i = (i * 31 + ch.charCodeAt(0)) % FOOD_TINTS.length;
+  return FOOD_TINTS[i];
 }
 function recipesEmpty(searching) {
   if (searching) return `<div class="empty-state"><div class="es-icon">🔍</div><div class="es-title">没有匹配的食物</div><div class="es-sub">换个关键词试试（品牌 / 系列 / 食物名）</div></div>`;
