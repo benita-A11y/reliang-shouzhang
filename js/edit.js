@@ -125,7 +125,7 @@ async function createUserShop(name, opts) {
   if (!cat || cat === '其他') cat = guessShopCat(o.foodName || '') || '其他';
   await saveEdit({
     ek: 'shopnew:' + id, kind: 'shopnew', shopId: id, name,
-    category: cat, emoji: o.emoji || shopCatEmoji(cat), color: '#5E5CE6',
+    category: cat, emoji: o.emoji || shopCatEmoji(cat), color: '#7A78E8',
     flavor: o.flavor || '咸香', image: ''
   });
   await rebuildShops();
@@ -164,7 +164,7 @@ async function applyShopEdits() {
     if (SHOP_MAP[e.shopId]) return;
     SHOP_MAP[e.shopId] = {
       id: e.shopId, name: e.name || '未命名店铺', emoji: e.emoji || shopCatEmoji(e.category),
-      cat: e.category || '其他', flavor: e.flavor || '咸香', color: e.color || '#5E5CE6',
+      cat: e.category || '其他', flavor: e.flavor || '咸香', color: e.color || '#7A78E8',
       image: e.image || '', items: [], _userShop: true
     };
   });
