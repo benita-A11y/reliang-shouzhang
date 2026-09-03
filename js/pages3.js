@@ -132,7 +132,7 @@ async function renderMonth() {
         <div class="muted small">${monthKeyOf(todayKey()) === BOARD.month ? '本月' : ''}</div>
       </div>
       <div class="cal-summary">
-        <span class="chip" style="background:var(--brand-soft);color:#3F3DA8">达标 ${ok} 天</span>
+        <span class="chip" style="background:var(--brand-soft);color:var(--brand)">达标 ${ok} 天</span>
         <span class="chip">未达标 ${no} 天</span>
         <span class="chip" style="background:var(--pink-soft);color:var(--pink)">放纵日 ${free} 天</span>
         <span class="chip" style="background:var(--green-soft);color:var(--green)">完成率 ${rate}%</span>
@@ -199,16 +199,16 @@ async function renderCharts() {
     const x = padL + 60 + i * 80, bw = 44, yBase = H - padB;
     const segP = bh * (pk / sum), segC = bh * (ck / sum), segF = bh * (fk / sum);
     return `
-      <rect x="${x}" y="${(yBase - segP).toFixed(1)}" width="${bw}" height="${segP.toFixed(1)}" rx="4" fill="#007AFF"/>
-      <rect x="${x}" y="${(yBase - segP - segC).toFixed(1)}" width="${bw}" height="${segC.toFixed(1)}" rx="4" fill="#FF9500"/>
-      <rect x="${x}" y="${(yBase - segP - segC - segF).toFixed(1)}" width="${bw}" height="${segF.toFixed(1)}" rx="4" fill="#AF52DE"/>`;
+      <rect x="${x}" y="${(yBase - segP).toFixed(1)}" width="${bw}" height="${segP.toFixed(1)}" rx="4" fill="#B39DDB"/>
+      <rect x="${x}" y="${(yBase - segP - segC).toFixed(1)}" width="${bw}" height="${segC.toFixed(1)}" rx="4" fill="#64B3F6"/>
+      <rect x="${x}" y="${(yBase - segP - segC - segF).toFixed(1)}" width="${bw}" height="${segF.toFixed(1)}" rx="4" fill="#FFB74D"/>`;
   }).join('');
   return `
     <div class="card">
       <div class="chart-title">📈 热量趋势（近14天） <span class="muted" style="font-weight:500">目标 ${target}kcal</span></div>
       <svg class="chart-box" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
         <defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#5E5CE6" stop-opacity="0.22"/><stop offset="1" stop-color="#5E5CE6" stop-opacity="0"/>
+          <stop offset="0" stop-color="#7A78E8" stop-opacity="0.22"/><stop offset="1" stop-color="#7A78E8" stop-opacity="0"/>
         </linearGradient></defs>
         ${grid}
         <path class="chart-area" d="${area}"/>
