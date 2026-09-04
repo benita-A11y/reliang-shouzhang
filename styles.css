@@ -510,49 +510,9 @@ mark.hl { background: linear-gradient(180deg, transparent 55%, rgba(122,120,232,
 .fl-edit { color: var(--sub2); font-size: 15px; padding: 6px; }
 .fl-edit:hover { color: var(--brand); }
 
-/* ---------- 记录页：取景框 ---------- */
-.viewfinder {
-  position: relative;
-  width: 250px; height: 250px;
-  margin: 10px auto 20px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: linear-gradient(160deg, #D9D9E3, #B7B7C4);
-  box-shadow: 0 12px 34px rgba(0,0,0,0.14), inset 0 0 0 2px rgba(255,255,255,0.5);
-}
-.viewfinder::before {
-  content: '';
-  position: absolute; inset: -60px;
-  background: repeating-conic-gradient(rgba(255,255,255,0.14) 0 6deg, transparent 6deg 14deg);
-  animation: spin 26s linear infinite;
-  border-radius: 50%;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes n-spin { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(12deg); } }
 .n-loading { animation: n-spin 1.1s ease-in-out infinite; display: inline-block; }
-.viewfinder .vf-center {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-  color: rgba(255,255,255,0.95);
-}
-.viewfinder .vf-icon { width: 64px; height: 64px; border-radius: 50%; background: rgba(255,255,255,0.22); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; }
-.viewfinder .vf-icon svg { width: 30px; height: 30px; }
-.viewfinder .vf-text { font-size: 13px; font-weight: 600; text-shadow: 0 1px 4px rgba(0,0,0,0.2); }
-/* 取景框四角标 */
-.viewfinder .vf-corner { position: absolute; width: 26px; height: 26px; border: 3px solid rgba(255,255,255,0.85); z-index: 2; }
-.viewfinder .vf-corner.tl { top: 20px; left: 20px; border-right: none; border-bottom: none; border-top-left-radius: 9px; }
-.viewfinder .vf-corner.tr { top: 20px; right: 20px; border-left: none; border-bottom: none; border-top-right-radius: 9px; }
-.viewfinder .vf-corner.bl { bottom: 20px; left: 20px; border-right: none; border-top: none; border-bottom-left-radius: 9px; }
-.viewfinder .vf-corner.br { bottom: 20px; right: 20px; border-left: none; border-top: none; border-bottom-right-radius: 9px; }
 
-/* 记录页：最近吃过快捷区 */
-.recent-strip { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 12px; -webkit-overflow-scrolling: touch; }
-.recent-chip { flex-shrink: 0; width: 76px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
-.recent-chip:active { transform: scale(.93); }
-.rc-photo { width: 64px; height: 64px; border-radius: 18px; overflow: hidden; position: relative; background: var(--brand-soft); box-shadow: var(--shadow-soft); display: flex; align-items: center; justify-content: center; font-size: 26px; }
-.rc-photo img { width: 100%; height: 100%; object-fit: cover; }
-.rc-name { font-size: 11px; font-weight: 600; max-width: 76px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
-.rc-kcal { font-size: 10px; color: var(--sub); font-variant-numeric: tabular-nums; }
 
 /* ---------- 识别/红灯卡片 ---------- */
 .light-badge {
@@ -1071,7 +1031,6 @@ mark.hl { background: linear-gradient(180deg, transparent 55%, rgba(122,120,232,
 .exit-btn { flex: 1; border: none; border-radius: 16px; padding: 12px 6px; font-size: 13.5px; font-weight: 800; line-height: 1.3; cursor: pointer; transition: transform .15s; }
 .exit-btn:active { transform: scale(.96); }
 .exit-btn small { display: block; font-size: 10px; font-weight: 500; opacity: .75; margin-top: 2px; }
-.exit-btn.record { background: linear-gradient(135deg, var(--green), #7BC47F); color: #fff; box-shadow: 0 6px 18px rgba(101,182,106,.3); }
 .exit-btn.bill { background: linear-gradient(135deg, var(--red), #EF5350); color: #fff; box-shadow: 0 6px 18px rgba(229,55,51,.3); }
 .exit-btn.fav { background: linear-gradient(135deg, var(--orange), #FFCC80); color: #fff; box-shadow: 0 6px 18px rgba(255,183,77,.3); }
 
@@ -1234,12 +1193,12 @@ mark.hl { background: linear-gradient(180deg, transparent 55%, rgba(122,120,232,
 .filter-body.open { display: flex; animation: fadeIn .25s; }
 
 /* 横向卡片滚动：吸附 + 惯性，滑动更有「咔哒」手感 */
-.recent-strip, .rec-row, .series-tabs, .cat-scroll, .quick-row, .album-previews, .wheel-bar {
+.series-tabs, .cat-scroll, .quick-row, .album-previews, .wheel-bar {
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
 }
-.recent-strip > *, .rec-row > *, .series-tabs > *, .cat-scroll > *, .quick-row > *, .album-previews > * { scroll-snap-align: start; }
+.series-tabs > *, .cat-scroll > *, .quick-row > *, .album-previews > * { scroll-snap-align: start; }
 
 /* 宽屏：店铺菜单与整页内容用栅格铺满，不再单列浪费空间 */
 @media (min-width: 900px) {
