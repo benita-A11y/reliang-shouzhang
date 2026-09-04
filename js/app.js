@@ -27,7 +27,6 @@ const MEALS = [
 ];
 const NAV = [
   { key: 'home', emoji: '🏠', label: '首页', color: '#7A78E8', soft: 'rgba(122,120,232,.14)' },
-  { key: 'record', emoji: '📷', label: '记录', color: '#65B66A', soft: 'rgba(101,182,106,.14)' },
   { key: 'recipes', emoji: '📖', label: '我的食谱', color: '#FFB74D', soft: 'rgba(255,183,77,.14)' },
   { key: 'hunt', emoji: '🍽️', label: '觅食', color: '#FFCDD0', soft: 'rgba(255,205,208,.14)' },
   { key: 'bill', emoji: '🧾', label: '多巴胺账单', color: '#E53733', soft: 'rgba(229,55,51,.12)' },
