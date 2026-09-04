@@ -91,7 +91,7 @@ function renderBoardEmpty() {
       <div style="font-size:40px">🗓️</div>
       <div class="es-title" style="font-size:16px;font-weight:700;margin:12px 0 6px">开始记录第一天，你的日历会在这里慢慢填满</div>
       <div class="muted small">每一次记录，都会在日历上留下颜色</div>
-      <button class="btn primary" style="margin-top:16px" data-action="nav:go" data-page="record">📷 去记录</button>
+      <button class="btn primary" style="margin-top:16px" data-action="nav:go" data-page="hunt">🍽️ 去觅食</button>
     </div>`;
 }
 
