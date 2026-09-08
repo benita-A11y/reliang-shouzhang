@@ -13,6 +13,9 @@ function greetEmoji() {
   return '🌆';
 }
 
+/* 快速录入 / 食谱表单「归类到」可选分类（与 catEmoji 兜底一致，保证每个分类都有图标） */
+const ALL_CATS = ['食堂', '外卖', '自制', '饮品', '奶茶咖啡', '汉堡炸鸡', '火锅', '烧烤', '快餐', '面包甜点', '零食', '水果', '麻辣烫', '粉面'];
+
 /* ============================================================
  * 首页（今日仪表盘）
  * ============================================================ */
@@ -160,33 +163,6 @@ registerPage('home', async function (root) {
     <div style="height:12px"></div>`;
 });
 
-async function getRecentSix() {
-  const recs = await getRecords();
-  const seen = new Set();
-  const recent = [];
-  for (const r of recs) {
-    const key = r.foodName + (r.shop || '');
-    if (seen.has(key)) continue;
-    seen.add(key);
-    recent.push({ name: r.foodName, kcal: r.kcal, photo: r.foodPhoto, ago: daysAgoText(r.date), id: r.foodId, shop: r.shop, category: r.category, portion: r.portion, macros: r.macros, price: r.price });
-    if (recent.length >= 6) break;
-  }
-  let i = 0;
-  while (recent.length < 6 && FOODS.length && i < FOODS.length) {
-    const f = FOODS[i++];
-    if (seen.has(f.name + (f.shop || ''))) continue;
-    seen.add(f.name + (f.shop || ''));
-    recent.push({ name: f.name, kcal: f.kcal, photo: f.photo, ago: '—', id: f.id, shop: f.shop, category: f.category, portion: f.portion, macros: f.macros, price: f.price });
-  }
-  return recent;
-}
-registerAction('quick:record', async (el) => {
-  const idx = Number(el.dataset.i);
-  const food = (REC.recent || [])[idx];
-  if (!food) return;
-  await recordFood(food, defaultMeal());
-  toast('已记录 ' + food.name, 'green');
-});
 registerAction('rec:del', async (el) => {
   const rec = (await getRecords()).find((r) => r.id === el.dataset.id);
   if (!rec) return;
