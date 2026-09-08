@@ -1,10 +1,10 @@
 /* 热量手账 Service Worker：离线优先，网络优先更新 */
-const CACHE = 'reliang-v43';
+const CACHE = 'reliang-v44';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
-  './manifest.json',
+  './manifest.json?v=44',
   './js/store.js',
   './js/data.js',
   './js/ai.js',
@@ -17,9 +17,9 @@ const ASSETS = [
   './js/pages4.js',
   './js/pages5.js',
   './js/crop.js',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/icon-192.png?v=44',
+  './icons/icon-512.png?v=44',
+  './icons/apple-touch-icon.png?v=44'
 ];
 
 self.addEventListener('install', (e) => {
