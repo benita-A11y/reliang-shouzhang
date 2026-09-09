@@ -1,5 +1,5 @@
 /* 热量手账 Service Worker：离线优先，网络优先更新 */
-const CACHE = 'reliang-v46';
+const CACHE = 'reliang-v47';
 const ASSETS = [
   './',
   './index.html',
