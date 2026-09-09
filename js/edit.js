@@ -208,7 +208,9 @@ async function applyShopEdits() {
     s.items.forEach((it, idx) => { it._i = idx; it._shopId = s.id; it._shopName = s.name; it._shopEmoji = s.emoji; });
   });
 }
-async function rebuildShops() { buildShopMap(); await applyShopEdits(); }
+/* 重建店铺映射并【只应用一次】用户编辑。
+   必须 await buildShopMap()，否则它内部的异步未完成就叠加 applyShopEdits，会造成编辑重复应用（单品重复上架）。 */
+async function rebuildShops() { await buildShopMap(); await applyShopEdits(); }
 
 /* ---------- 规格合并（单品自定义规格优先） ---------- */
 function isDrinkItem(it) {
