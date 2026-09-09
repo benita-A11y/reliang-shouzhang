@@ -394,15 +394,6 @@ registerPage('shop', async function (root) {
         </div>`).join('')}
     </div>` : ''}
     <button class="btn block add-item-btn" data-action="shop:add">➕ 添加新品</button>
-    <div class="section-title" style="margin-top:18px">🔥 为你推荐 <span class="small muted" style="font-weight:500">本店其他热销</span></div>
-    <div class="rec-row">
-      ${shop.items.map((it) => `
-        <div class="rec-card" data-action="shop:item" data-i="${it._i}">
-          <div class="rec-photo" style="--nc-soft:${hexA(shop.color || '#5E5CE6', 0.12)}">${shop.emoji}</div>
-          <div class="rec-name">${esc(it.name)}</div>
-          <div class="rec-meta">¥${it.price.toFixed(2)} · ${it.kcal}kcal</div>
-        </div>`).join('')}
-    </div>
     <div style="height:12px"></div>`;
 });
 registerAction('shop:back', () => switchPage('hunt'));
