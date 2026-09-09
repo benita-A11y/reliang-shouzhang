@@ -371,7 +371,7 @@ registerPage('shop', async function (root) {
     <div class="chips shop-item-sort" style="margin:10px 0 4px;opacity:.85">
       ${[['default', '🥇 推荐'], ['freq', '🔥 我常吃'], ['kcal-asc', '🥗 热量低→高'], ['kcal-desc', '🍔 热量高→低']].map(([v, t]) => `<button class="chip sm ${SHOP_VIEW.sort === v ? 'on' : ''}" data-action="shop:sort" data-v="${v}">${t}</button>`).join('')}
     </div>` : ''}
-    <div class="section-title" style="margin-top:18px">🛒 本店菜单<span class="small muted" style="font-weight:500">${mineCount > 0 ? '📌 已为你标记 ' + mineCount + ' 款' : '平台收录'}</span></div>
+    <div class="section-title" style="margin-top:18px">🛒 本店菜单<span class="small muted" style="font-weight:500">${SHOP_VIEW.series !== '全部' ? '已筛选「' + esc(SHOP_VIEW.series) + '」· ' + finalItems.length + ' 款' : (mineCount > 0 ? '📌 已为你标记 ' + mineCount + ' 款' : '平台收录')}</span></div>
     <div class="menu-list">${finalItems.map((it) => menuItemHTML(it, foodMap, shop)).join('')}</div>
     ${orphans.length ? `
     <div class="section-title" style="margin-top:18px">📥 仅在我的食谱<span class="small muted" style="font-weight:500">还没收录进本店菜单</span></div>
