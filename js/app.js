@@ -66,7 +66,7 @@ async function init() {
   await seedIfNeeded();
   PROFILE = await loadProfile();
   await refreshRecordTotal();
-  await buildShopMap();
+  await rebuildShops();   // 重建店铺并应用用户编辑（内部已含 buildShopMap）
   renderNav();
   bindGlobalEvents();
   blockNativeGestures();
@@ -85,7 +85,8 @@ async function buildShopMap() {
     SHOP_MAP[s.id] = clone;
     clone.items.forEach((it) => { it._shopId = s.id; it._shopName = s.name; it._shopEmoji = s.emoji; it._i = clone.items.indexOf(it); });
   });
-  await applyShopEdits();
+  // 注意：这里【不要】再调用 applyShopEdits —— 用户编辑只允许由 rebuildShops 统一应用一次，
+  // 否则新增单品会被 push 两遍（菜单里同一个条目出现两次）。
 }
 async function refreshRecordTotal() {
   const recs = await getRecords();
