@@ -222,6 +222,20 @@ async function seedIfNeeded() {
       editCount: 0, isSeed: true
     }));
     await dbBulk(IDB.foods, list);
+    return;
+  }
+  /* 自愈：多标签页并发 / 重复初始化会让同名种子被插入多份（食谱库出现「一样食物两条」）。
+     这里只清理 isSeed 的重复项（保留最早那条，其食用记录/标签以保留项为准），
+     绝不动用户自己录入的食物，避免误删数据。 */
+  const seen = new Set();
+  const dupIds = [];
+  foods.slice().sort((a, b) => (a.id || '').localeCompare(b.id || '')).forEach((f) => {
+    const key = (f.name || '') + '|' + (f.shop || '');
+    if (seen.has(key)) { if (f.isSeed) dupIds.push(f.id); }
+    else seen.add(key);
+  });
+  if (dupIds.length) {
+    for (const id of dupIds) await dbDel(IDB.foods, id);
   }
 }
 
@@ -530,7 +544,7 @@ async function importAllData(data) {
 async function rebuildAppData() {
   await loadFoods();
   await refreshRecordTotal();
-  await buildShopMap();
+  await rebuildShops();   // 与 init 一致：重建店铺 + 应用用户编辑
 }
 function downloadJSON(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
